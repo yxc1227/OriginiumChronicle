@@ -6,6 +6,8 @@ use App\Enums\SourceType;
 use App\Enums\World;
 use App\Models\Era;
 use App\Models\Source;
+use App\Support\Search\Keyword;
+use App\Support\Search\Params;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -24,15 +26,11 @@ class SourceController extends Controller
         // 侧栏筛选（与时间线同形）。类型不在枚举里时按「未筛选」处理：
         // 手改 URL 得到的是完整列表，而不是一张谁也不明白为什么空着的表
         $type = SourceType::tryFrom((string) $request->string('type')->value()) ?? null;
-        $keyword = trim((string) $request->string('q')->value());
+        $keyword = Params::text($request, 'q');
 
-        $sources = Source::query()
+        $sources = Keyword::apply(Source::query(), $keyword, ['name', 'code', 'description'])
             ->withCount('events')
             ->when($type !== null, fn ($query) => $query->where('type', $type->value))
-            ->when($keyword !== '', fn ($query) => $query->where(fn ($search) => $search
-                ->where('name', 'like', "%{$keyword}%")
-                ->orWhere('code', 'like', "%{$keyword}%")
-                ->orWhere('description', 'like', "%{$keyword}%")))
             ->orderBy('type')
             ->orderBy('release_order')
             ->paginate(50)

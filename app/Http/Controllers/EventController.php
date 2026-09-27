@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\World;
 use App\Exceptions\EditConflictException;
 use App\Exceptions\WriteDeniedException;
 use App\Http\Requests\StoreAnnotationRequest;
@@ -19,16 +18,15 @@ use App\Services\EventLockService;
 use App\Services\EventWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Gate;
+use Symfony\Component\HttpFoundation\Response;
 
 class EventController extends Controller
 {
     public function __construct(
         private readonly EventWriter $writer,
         private readonly EventLockService $locks,
-    ) {
-    }
+    ) {}
 
     /**
      * 条目详情。
@@ -39,7 +37,7 @@ class EventController extends Controller
      *  · 直接访问 `/events/61`（例如从人物页、或别人发来的链接）是浏览器整页导航，
      *    走 HTML 详情页，否则浏览器会把 JSON 原样显示出来。
      */
-    public function show(Request $request, Event $event): \Symfony\Component\HttpFoundation\Response
+    public function show(Request $request, Event $event): Response
     {
         $event->load(['era', 'sources', 'characters', 'factions', 'tags', 'annotations.user', 'causedBy', 'parent', 'place']);
 

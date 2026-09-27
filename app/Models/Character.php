@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CharacterKind;
 use App\Enums\World;
+use App\Support\Search\Keyword;
 use App\Support\TerraDate;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -359,30 +360,28 @@ class Character extends Model
         return $query->where('kind', CharacterKind::Operator->value);
     }
 
-    /** 关键词：名称 / 代号 / 头衔 / 种族 / 出身地。 */
+    /**
+     * 关键词：名称 / 代号 / 头衔 / 出身地 / 简介 / 种族名 / 阵营名。
+     *
+     * 语义与其他模块同一套（见 App\Support\Search\Keyword），这里只列「哪些算正文」。
+     *
+     * 简介与阵营名是 2026-09-27 补的：卡片正文就是简介，阵营又是个可点的筛选项 ——
+     * 「写得出来却搜不到」是这页最刺眼的两个缺口（从前输入「罗德岛」会是零结果）。
+     */
     public function scopeSearch(Builder $query, ?string $term): Builder
     {
-        $term = trim((string) $term);
-
-        if ($term === '') {
-            return $query;
-        }
-
-        // 转义 LIKE 通配符，否则搜一个 % 就会命中全部人物
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
-        $needle = '%'.mb_strtolower($escaped).'%';
-
-        return $query->where(function (Builder $inner) use ($needle) {
-            $inner->whereRaw('lower(name) like ?', [$needle])
-                ->orWhereRaw('lower(coalesce(codename, \'\')) like ?', [$needle])
-                ->orWhereRaw('lower(coalesce(title, \'\')) like ?', [$needle])
-                // 出身地搜的是来源的原文写法（「乌萨斯」「维多利亚」都在这一列里）
-                ->orWhereRaw('lower(coalesce(birth_place, \'\')) like ?', [$needle])
-                // 种族改走字典：用子查询而不是 join，避免与 withCount 之类的聚合互相干扰
-                ->orWhereIn('race_id', Race::query()
-                    ->whereRaw('lower(name) like ?', [$needle])
-                    ->pluck('id'));
-        });
+        return Keyword::apply($query, $term, [
+            'name',
+            'codename',
+            'title',
+            // 出身地搜的是来源的原文写法（「乌萨斯」「维多利亚」都在这一列里）
+            'birth_place',
+            'description',
+        ], [
+            // 链出去的字典名一并搜：读者当然会拿种族名、阵营名当关键词
+            'race' => ['name', 'english'],
+            'factions' => ['name', 'full_name'],
+        ]);
     }
 
     public function toApiArray(): array

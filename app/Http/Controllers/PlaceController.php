@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Enums\World;
 use App\Models\Place;
+use App\Support\Search\Keyword;
+use App\Support\Search\Params;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -28,7 +30,7 @@ class PlaceController extends Controller
         // 手改 URL 得到的是完整列表，而不是一张谁也不明白为什么空着的表
         $kindRaw = $request->string('kind')->value();
         $kind = array_key_exists($kindRaw, Place::KINDS) ? $kindRaw : null;
-        $keyword = trim((string) $request->string('q')->value());
+        $keyword = Params::text($request, 'q');
 
         $tree = $this->tree($world, $keyword, $kind);
 
@@ -43,7 +45,7 @@ class PlaceController extends Controller
             'filters' => ['q' => $keyword, 'kind' => $kind],
             // 树被过滤过之后，可见行数不再等于真实的下辖数；
             // 视图靠这个标记把「（N 个下辖）」的注记收起来，免得读者对着行数数不齐
-            'filtered' => $keyword !== '' || $kind !== null,
+            'filtered' => $keyword !== null || $kind !== null,
         ]);
     }
 
@@ -59,7 +61,7 @@ class PlaceController extends Controller
      *
      * @return array{nodes: list<array{place: Place, depth: int}>, matched: array<int, bool>}
      */
-    private function tree(World $world, string $keyword = '', ?string $kind = null): array
+    private function tree(World $world, ?string $keyword, ?string $kind = null): array
     {
         $places = Place::ofWorld($world)
             // children 供列表显示「N 个下辖」，不预载就是每行一次查询
@@ -76,7 +78,7 @@ class PlaceController extends Controller
         $visible = null;
         $matched = [];
 
-        if ($keyword !== '' || $kind !== null) {
+        if ($keyword !== null || $kind !== null) {
             [$visible, $matched] = $this->visibleIds($places, $keyword, $kind);
         }
 
@@ -110,9 +112,9 @@ class PlaceController extends Controller
      * 只给一行孤零零的匹配项，层级信息反而丢了。
      *
      * @param  Collection<int, Place>  $places
-     * @return array{0: array<int, bool>, 1: array<int, bool>}  [可见（命中 + 祖先）, 命中]
+     * @return array{0: array<int, bool>, 1: array<int, bool>} [可见（命中 + 祖先）, 命中]
      */
-    private function visibleIds(Collection $places, string $keyword, ?string $kind): array
+    private function visibleIds(Collection $places, ?string $keyword, ?string $kind): array
     {
         $byId = $places->keyBy('id');
         $visible = [];
@@ -123,12 +125,14 @@ class PlaceController extends Controller
                 continue;
             }
 
-            if ($keyword !== '') {
+            if ($keyword !== null) {
+                // 别名是 JSON 列，各驱动取法不一 —— 只能整行取出来在 PHP 里比。
+                // 语义仍走全站那一套（见 Keyword::contains）：大小写不敏感、按字面比
                 $haystack = $place->name
                     .implode('', (array) $place->aliases)
                     .$place->description;
 
-                if (mb_stripos($haystack, $keyword) === false) {
+                if (! Keyword::contains($haystack, $keyword)) {
                     continue;
                 }
             }

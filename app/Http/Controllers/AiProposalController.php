@@ -12,6 +12,8 @@ use App\Models\Event;
 use App\Models\Source;
 use App\Services\Ai\AiEventSynthesizer;
 use App\Services\ProposalApplier;
+use App\Support\Search\Keyword;
+use App\Support\Search\Params;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -23,8 +25,7 @@ class AiProposalController extends Controller
     public function __construct(
         private readonly AiEventSynthesizer $synthesizer,
         private readonly ProposalApplier $applier,
-    ) {
-    }
+    ) {}
 
     /** AI 审核台。 */
     public function index(Request $request): View
@@ -32,16 +33,13 @@ class AiProposalController extends Controller
         Gate::authorize('viewAny', AiProposal::class);
 
         // 状态 / 出处 / 批次在侧栏各有自己的筛选项，关键词只搜标题与摘要
-        $keyword = trim((string) $request->string('q')->value());
+        $keyword = Params::text($request, 'q');
 
-        $proposals = AiProposal::query()
+        $proposals = Keyword::apply(AiProposal::query(), $keyword, ['title', 'summary'])
             ->with(['source', 'era', 'duplicateOf', 'reviewer'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')->value()))
             ->when($request->filled('batch_id'), fn ($q) => $q->where('batch_id', $request->string('batch_id')->value()))
             ->when($request->filled('source_id'), fn ($q) => $q->where('source_id', $request->integer('source_id')))
-            ->when($keyword !== '', fn ($query) => $query->where(fn ($search) => $search
-                ->where('title', 'like', "%{$keyword}%")
-                ->orWhere('summary', 'like', "%{$keyword}%")))
             ->latest()
             ->paginate(30)
             ->withQueryString();

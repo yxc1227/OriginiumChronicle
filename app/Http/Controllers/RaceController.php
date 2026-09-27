@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Race;
+use App\Support\Search\Keyword;
+use App\Support\Search\Params;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -19,7 +21,7 @@ class RaceController extends Controller
     public function index(Request $request): View
     {
         // 种族不分世界，搜索同样不分世界：一份字典查两边的历史
-        $keyword = trim((string) $request->string('q')->value());
+        $keyword = Params::text($request, 'q');
 
         return view('races.index', [
             'races' => $this->races($keyword),
@@ -35,14 +37,10 @@ class RaceController extends Controller
      *
      * @return Collection<int, Race>
      */
-    private function races(string $keyword = ''): Collection
+    private function races(?string $keyword): Collection
     {
-        return Race::query()
+        return Keyword::apply(Race::query(), $keyword, ['name', 'english', 'description'])
             ->withCount('characters')
-            ->when($keyword !== '', fn ($query) => $query->where(fn ($search) => $search
-                ->where('name', 'like', "%{$keyword}%")
-                ->orWhere('english', 'like', "%{$keyword}%")
-                ->orWhere('description', 'like', "%{$keyword}%")))
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();

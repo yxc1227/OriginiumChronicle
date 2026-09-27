@@ -756,10 +756,11 @@ select {
     gap: 10px;
     /* 边界线整条压到轴上：左边的负外边距把线拉到主轴，右内边距把文字让回原位 ——
        否则线从 30px 处才开始，与轴上的节点之间空出一截，看着像两个东西 */
-    margin: 46px 0 2px -30px;
+    /* 下外边距负责它与纪元色带之间的 14px：色带现在粘性停靠、按盒子上沿落位，
+       不能自带 top margin（见 .era-band），于是这份间距交给时代头自己出 */
+    margin: 46px 0 14px -30px;
     padding: 8px 0 8px 30px;
     border-top: 2px solid var(--border-strong);
-    /* 让位高度见顶部「深链落点」一节 */
 }
 
 /* 时代是轴上高一层级的节点：比纪元的节点大一档，压在这条边界线上 */
@@ -800,28 +801,54 @@ select {
  * 纪元是轴上的一个节点：色块落在虚线上，点它就把这一段收起来（默认展开）。
  */
 .era-band {
-    position: relative;
+    /*
+     * 粘在快速导航条之下。
+     *
+     * 从前色带只是普通的一行：条目滚上去时，纪元标题从目录条底下穿过、与它顶死
+     * 在一处 —— 读者正在读的这段，标题反倒被目录盖住（实际报过一次，见截图）。
+     * 让色带自己停靠：这一段在读的时候，标题始终钉在目录条正下方，条目从它
+     * 背后收走；下一段的色带（同层、靠后）滚上来时正好把它盖走，分段头自动让位。
+     */
+    position: sticky;
+    top: calc(var(--topbar-h) + var(--quick-nav-h, 0px));
+    /* 层叠居中：目录条（20）压得住它，它压得住条目。停靠点贴着目录条下沿，
+       中间不留缝 —— 有缝就会露出从底下穿过的条目。 */
+    z-index: 15;
+    /*
+     * 停靠时紧贴目录条，正文却要让开一段呼吸位，否则标题上沿顶着目录条、
+     * 读起来仍像叠在一起（实际报过第二次）。这段空白由色带自己的上内边距出：
+     * 背景不透明，盖住的就是这段留白 —— 看上去是间距，不是一条会透出条目的缝。
+     * 节点（::before）跟着这个值对齐标题行，改这里一处即可。
+     */
+    --band-lead: 14px;
     display: flex;
     align-items: center;
     gap: 11px;
     width: 100%;
-    margin: 30px 0 13px;
-    padding: 0 0 8px;
-    background: none;
+    /*
+     * 上间距不放在色带上：粘性停靠按盒子上沿落位，带着 top margin 停靠，
+     * 落点就有了两种解释。分段间的 30px 改由前一个兄弟的下外边距负责
+     * （.tl 的、收起色带的、时代头的，各见其规则），色带只留与条目之间的 13px。
+     */
+    margin: 0 0 13px;
+    padding: var(--band-lead) 0 8px;
+    /* 不透明才盖得住穿过来的条目；主轴画在 .tl-stack 上、在色带左侧 30px 处，
+       不会被这条背景切断。 */
+    background: var(--bg);
     border: 0;
     border-bottom: 1px solid var(--border);
     color: inherit;
     font: inherit;
     text-align: left;
     cursor: pointer;
-    /* 让位高度见顶部「深链落点」一节 */
 }
 
 /* 轴上的节点：与虚线、与条目的小方点同一支笔（直角、硬边），颜色用纪元自己的色 */
 .era-band::before {
     content: '';
     position: absolute;
-    top: 0;
+    /* 跟着上内边距走：节点要在正文那一行居中，不是在整个盒子里居中 */
+    top: var(--band-lead, 0px);
     bottom: 8px;
     left: -27px;
     margin: auto 0;
@@ -831,10 +858,9 @@ select {
     border: 1px solid var(--bg);
 }
 
-/* 紧随分期标题的纪元色带：上间距让出去，避免两次分组之间出现两条空隙 */
-.era-period + .era-band { margin-top: 14px; }
-
-.era-band:first-child { margin-top: 0; }
+/* 分段之间的 30px 改由分段体（.tl）的下外边距出 —— 纪元色带粘性停靠按盒子上沿
+   落位，自带 top margin 会让停靠位置有两种解释（见 .era-band）。 */
+.tl-stack > .tl { margin-bottom: 30px; }
 
 /* 折叠钮：与地名树同一套「+ / −」记号（等宽、直角），尺寸按这一行给 */
 .era-band__fold {
@@ -857,6 +883,10 @@ select {
 
 /* 收起的那一段：名字压暗一档，CNT 照旧报数 —— 折叠不是隐藏，是换个粒度看 */
 .era-band[aria-expanded='false'] .era-band__name { color: var(--text-dim); }
+
+/* 收起的分段没有身体，.tl 连同它的 30px 下外边距一起撤掉，下一段的色带会直接
+   贴上来 —— 这份 30px 由收起的色带自己补回，分段之间的呼吸位不随折叠改变。 */
+.era-band[aria-expanded='false'] { margin-bottom: 30px; }
 
 /* 纪元名是这一段的主标题，历史时间只是它的注脚：字号差 2 倍、字体一比例一等宽、
    颜色一实一虚 —— 三处一起给层级，读者不必细看就知道哪个是名字、哪个是年份 */
@@ -1448,6 +1478,18 @@ table.tbl tbody tr:hover td { background: var(--bg-raised); }
     letter-spacing: .13em;
     text-transform: uppercase;
     color: var(--text);
+}
+
+/*
+ * 检索提交中：输入框压暗。
+ * 与顶部导航进度线（表单带 data-loading-target 时还有列表容器的半透明遮罩）一起，
+ * 把「已经提交、页面还没走」这段时间说明白 —— 整页导航在本地也可能有几百毫秒空档，
+ * 没有反馈就会被当成没提交上。按钮已在 2026-09-27 去掉，反馈全靠这几处。
+ * 只压暗而不禁用输入框：disabled 的字段不随表单提交，那样检索词会丢。
+ */
+.sidebar__form.is-pending input[type='search'],
+.sidebar__form.is-pending input[type='text'] {
+    opacity: .5;
 }
 
 .filter-group { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }

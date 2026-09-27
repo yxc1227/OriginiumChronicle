@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\DateConfidence;
 use App\Enums\DatePrecision;
+use App\Enums\EventStatus;
 use App\Enums\ProposalStatus;
 use App\Support\TerraDate;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -177,7 +178,7 @@ class AiProposal extends Model
             'date_confidence' => $this->date_confidence->value,
             'era_id' => $this->era_id,
             'location' => $this->location,
-            'status' => \App\Enums\EventStatus::NeedsReview->value,
+            'status' => EventStatus::NeedsReview->value,
         ];
     }
 

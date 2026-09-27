@@ -6,6 +6,7 @@ namespace App\Models;
 use App\Enums\IdentityProvider;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Support\Search\Keyword;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -308,24 +309,15 @@ class User extends Authenticatable
 
     /* ------------------------------------------------------------------ 查询作用域 */
 
-    /** 关键词：登录名 / 昵称 / 邮箱。 */
+    /**
+     * 关键词：登录名 / 昵称 / 邮箱。
+     *
+     * 空值、大小写、通配符的规矩全在 App\Support\Search\Keyword —— 从前这里
+     * 自己转义一遍（`\%` 在 SQLite 下不成立），是全站三套转义里的一套。
+     */
     public function scopeSearch(Builder $query, ?string $term): Builder
     {
-        $term = trim((string) $term);
-
-        if ($term === '') {
-            return $query;
-        }
-
-        // 转义 LIKE 通配符：否则用户搜一个 % 就会命中全部账号
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
-        $needle = '%'.mb_strtolower($escaped).'%';
-
-        return $query->where(function (Builder $inner) use ($needle) {
-            $inner->whereRaw('lower(name) like ?', [$needle])
-                ->orWhereRaw('lower(coalesce(nickname, \'\')) like ?', [$needle])
-                ->orWhereRaw('lower(email) like ?', [$needle]);
-        });
+        return Keyword::apply($query, $term, ['name', 'nickname', 'email']);
     }
 
     /**

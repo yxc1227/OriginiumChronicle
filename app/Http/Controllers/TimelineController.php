@@ -15,6 +15,8 @@ use App\Models\Place;
 use App\Models\Source;
 use App\Models\Tag;
 use App\Services\TimelineConsistencyChecker;
+use App\Support\Search\Keyword;
+use App\Support\Search\Params;
 use App\Support\TerraDate;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -23,9 +25,7 @@ use Illuminate\View\View;
 
 class TimelineController extends Controller
 {
-    public function __construct(private readonly TimelineConsistencyChecker $checker)
-    {
-    }
+    public function __construct(private readonly TimelineConsistencyChecker $checker) {}
 
     /**
      * 主界面：时间线。筛选条件全部由前端驱动，服务端只负责首屏与选项字典。
@@ -217,21 +217,24 @@ class TimelineController extends Controller
         return array_filter([
             // 世界永远存在（缺省泰拉），不参与「空值即忽略」的过滤 —— 它是一条隔离边界
             'world' => World::fromRequest($request->string('world')->value())->value,
-            'q' => $request->string('q')->trim()->value(),
-            'era_id' => $request->integer('era_id') ?: null,
+            // 关键词与 id 的读法统一走 Params / Keyword（与各页同一套规矩）：
+            // 空值与非法 id 的判定只此一处；「0」是有效关键词，不是空值
+            'q' => Params::text($request, 'q'),
+            'era_id' => Params::id($request, 'era_id'),
             'status' => $request->string('status')->value() ?: null,
             'confidence' => $request->string('confidence')->value() ?: null,
             'precision' => $request->string('precision')->value() ?: null,
+            // 纪元索引不是 id：0 是合法值，不能按「正整数」判
             'from_index' => $request->has('from_index') ? (int) $request->integer('from_index') : null,
             'to_index' => $request->has('to_index') ? (int) $request->integer('to_index') : null,
-            'source_id' => $request->integer('source_id') ?: null,
+            'source_id' => Params::id($request, 'source_id'),
             'source_type' => $request->string('source_type')->value() ?: null,
-            'faction_id' => $request->integer('faction_id') ?: null,
-            'place_id' => $request->integer('place_id') ?: null,
-            'character_id' => $request->integer('character_id') ?: null,
-            'tag_ids' => array_filter((array) $request->input('tag_ids', [])),
-            'only_unanchored' => $request->boolean('only_unanchored'),
-            'only_with_anomalies' => $request->boolean('only_with_anomalies'),
+            'faction_id' => Params::id($request, 'faction_id'),
+            'place_id' => Params::id($request, 'place_id'),
+            'character_id' => Params::id($request, 'character_id'),
+            'tag_ids' => Params::ids($request, 'tag_ids') ?? [],
+            'only_unanchored' => Params::flag($request, 'only_unanchored'),
+            'only_with_anomalies' => Params::flag($request, 'only_with_anomalies'),
         ], fn ($value) => $value !== null && $value !== '' && $value !== []);
     }
 }

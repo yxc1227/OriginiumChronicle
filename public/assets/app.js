@@ -29,6 +29,26 @@
         };
     }
 
+    /*
+     * 输入法组字守卫
+     * ---------------------------------------------------------------------------
+     * 中文（及日文）输入时，**拼音还没上屏** input 事件就已经在连续触发，
+     * 此时 field.value 是中间态 —— 打「罗德岛」的途中它是 "luodedao"。
+     * 拿它去检索必然检索不到，还会白白产生一次跳转 / 请求。这正是
+     * 「用户还没输完，系统就自动检索」的来源，光靠调大防抖治不好：
+     * 组字时停下来想一下、或在候选窗里挑字，都可能超过任意阈值。
+     *
+     * 因此按 compositionstart ~ compositionend 判定组字期，期间所有触发路径
+     * 一律压住；上屏（compositionend）之后 value 才是最终文字，那时才允许检索。
+     * 同理，组字期间按回车是**选候选词上屏**，不是提交 —— 见各处的 isComposing 判断。
+     */
+    const composing = new WeakSet();
+
+    function guardComposition(field) {
+        field.addEventListener('compositionstart', () => composing.add(field));
+        field.addEventListener('compositionend', () => composing.delete(field));
+    }
+
     /**
      * 统一请求封装。
      * 刻意不抛异常：409（冲突）和 403（拒绝写入）都是**业务分支**而非错误，
@@ -739,10 +759,40 @@
             const sidebar = $('#filters');
             if (!sidebar) return;
 
+            const isText = (el) => el.type === 'search' || el.type === 'text';
+            const apply = () => { readFilters(); reset(); };
+
+            /*
+             * 客户端筛选没有整页跳转，边打字边筛是这里想要的，所以防抖保留。
+             * 但必须躲开组字期：拼音中间态会先筛出「零结果」再闪回正确结果，
+             * 看着就像检索不准，也白白多打一次接口。
+             */
+            const deferred = debounce(apply, 450);
+
+            $$('[data-filter]', sidebar).forEach((input) => {
+                if (isText(input)) guardComposition(input);
+            });
+
             sidebar.addEventListener('change', () => { readFilters(); reset(); });
-            sidebar.addEventListener('input', debounce((e) => {
-                if (e.target.type === 'search' || e.target.type === 'text') { readFilters(); reset(); }
-            }, 320));
+
+            sidebar.addEventListener('input', (e) => {
+                if (!isText(e.target)) return;
+                if (e.isComposing || composing.has(e.target)) return;
+                deferred();
+            });
+
+            // 上屏之后 value 才是最终文字，把组字期间压住的那一次补上
+            sidebar.addEventListener('compositionend', (e) => {
+                if (isText(e.target)) deferred();
+            });
+
+            // 回车立即检索，不必再等防抖；组字期间的回车是上屏选词，不是提交
+            sidebar.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || !isText(e.target)) return;
+                if (e.isComposing || composing.has(e.target)) return;
+                e.preventDefault();
+                apply();
+            });
 
             $('#filters-reset')?.addEventListener('click', () => {
                 $$('[data-filter]', sidebar).forEach((input) => {
@@ -2568,9 +2618,15 @@
 
     /* ------------------------------------------------------------------ 服务端筛选侧栏 */
 
-    // 账号管理开创、现在全部列表页共用的形态：GET 表单包住三段式侧栏，
-    // select 改动即提交，文本输入防抖后提交（值没变就不提交）。
+    // 账号管理开创、现在全部列表页共用的形态：GET 表单包住三段式侧栏。
     // 时间线不走这里 —— 它的筛选是纯客户端的 data-filter，见 Timeline.bindFilters。
+    //
+    // 检索的触发时机（2026-09-26 改，2026-09-27 去掉按钮）：**不再边打字边提交**。
+    // 服务端筛选是一次整页导航，每敲几个字就跳一次页面本身就是错的；再叠加中文
+    // 输入法组字期间的拼音中间态，就成了「内容没输完就跳转、结果还不准、请求还多」。
+    // 改为只在用户**明确表达意图**时提交：回车 / 失焦且内容真的变了 —— 与时间线的
+    // 检索框同构（那里也没有按钮）。
+    // 空值与纯空白一律不提交 —— 那等价于「全部」，而这个动作侧栏已有「重置」。
     const SidebarForms = (() => {
         function bind() {
             $$('form.sidebar__form').forEach((form) => {
@@ -2578,28 +2634,128 @@
                 form.dataset.bound = '1';
 
                 // data-loading-target 指向提交时要盖半透明的列表容器（如账号表）；
-                // 没有就不做加载态 —— 整页跳转本身就是反馈
+                // 没有就只靠进度线与输入框自身的 pending 态反馈
                 const loading = form.dataset.loadingTarget ? $(form.dataset.loadingTarget) : null;
+                const field = form.querySelector('input[type="search"], input[type="text"]');
+
+                if (field) guardComposition(field);
+
+                /*
+                 * 一次导航只允许发起一次：回车与失焦可能落在一起（先失焦、再敲回车），
+                 * 没有这道闸门就会连发两次请求。
+                 */
+                let submitting = false;
+
+                /*
+                 * 提交进行中：输入框压暗（.sidebar__form.is-pending）、列表容器盖半透明、
+                 * 顶部进度线亮起 —— 按钮去掉后，反馈由这三处一起出。
+                 * 注意**不能禁用输入框** —— disabled 的字段不随表单提交，
+                 * 那样检索词会在提交这一刻丢失。
+                 */
+                const beginSubmit = () => {
+                    if (submitting) return false;
+                    submitting = true;
+
+                    form.classList.add('is-pending');
+                    loading?.classList.add('is-loading');
+                    NavFeedback.signal();
+
+                    return true;
+                };
 
                 const submit = () => {
-                    loading?.classList.add('is-loading');
-                    // form.submit() 不触发 submit 事件，导航进度线在这里手动接上
-                    NavFeedback.signal();
+                    if (!beginSubmit()) return;
+                    // form.submit() 不触发 submit 事件，进度线在 beginSubmit 里手动接上
                     form.submit();
                 };
 
-                $$('[data-autosubmit]', form).forEach((field) => {
-                    if (field.tagName === 'SELECT') {
-                        field.addEventListener('change', submit);
+                // 原生提交路径（未被 keydown 拦下的隐式提交）：补上加载态，并做空值闸门
+                form.addEventListener('submit', (e) => {
+                    // 空检索不发请求。NavFeedback 见到 defaultPrevented 就不会亮进度线
+                    if (field && field.value.trim() === '') { e.preventDefault(); return; }
+                    // 已经提交过了（回车 / 失焦都会走到 submit），这里不再叠一次
+                    if (!beginSubmit()) e.preventDefault();
+                });
+
+                $$('[data-autosubmit]', form).forEach((input) => {
+                    if (input.tagName === 'SELECT') {
+                        input.addEventListener('change', submit);
                         return;
                     }
 
-                    // 文本框用防抖，并且只在值真的变了才提交 ——
-                    // 否则「打字后又删回原样」也会触发一次无意义的整页刷新
-                    const initial = field.value;
-                    field.addEventListener('input', debounce(() => {
-                        if (field.value !== initial) submit();
-                    }, 600));
+                    const initial = input.value;
+
+                    /*
+                     * 清空 = **撤销这次检索**。
+                     *
+                     * 从前清空后失焦是把旧词塞回输入框：那保住了「框里显示的就是正在
+                     * 生效的词」这一条，代价是检索根本清不掉 —— 框空了、列表还按旧词
+                     * 在筛，再点一下旧词又蹦回来。现在改成真的撤销：带着其余筛选
+                     * （世界 / 类型 / 阵营…）重新导航一次，但**不带关键词** ——
+                     * 服务端收到「没有 q」就回到未检索的那份列表。
+                     *
+                     * 地址栏从零重建（而不是在现有 URL 上改）：分页游标（page）这类
+                     * 一次性参数也一并丢掉 —— 撤销检索后停在「第 3 页」是说不通的。
+                     * 空值字段一律不写进地址栏（`?q=&kind=` 那种空参数不该出现）。
+                     */
+                    const resetKeyword = () => {
+                        if (submitting) return;
+
+                        const target = new URL(
+                            form.getAttribute('action') || window.location.href,
+                            window.location.href,
+                        );
+
+                        target.search = '';
+
+                        new URLSearchParams(new FormData(form)).forEach((value, key) => {
+                            if (key === input.name) return;
+                            if (String(value).trim() === '') return;
+                            target.searchParams.set(key, value);
+                        });
+
+                        beginSubmit();
+                        window.location.assign(target.toString());
+                    };
+
+                    /*
+                     * 回车：接管原生隐式提交，好让「组字中」与「清空」这两种情况被单独接住。
+                     * 组字期间按回车是**选候选词上屏**，不是提交 —— 误当成提交就会
+                     * 拿半截拼音去检索。
+                     */
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        if (e.isComposing || composing.has(input)) return;
+
+                        if (input.value.trim() === '') {
+                            // 清空后回车与清空后失焦同义：撤销检索（本来就没检索过则什么都不做）
+                            if (initial.trim() !== '') resetKeyword();
+
+                            return;
+                        }
+
+                        submit();
+                    });
+
+                    /*
+                     * 失焦：清了撤销检索、改了按新词检索、没变什么都不做 ——
+                     * 三种情形各自的结果都不一样，别让它们走到同一条路上。
+                     */
+                    input.addEventListener('blur', () => {
+                        const next = input.value.trim();
+                        const was = initial.trim();
+
+                        if (next === was) return;
+
+                        if (next === '') {
+                            resetKeyword();
+
+                            return;
+                        }
+
+                        submit();
+                    });
                 });
             });
         }

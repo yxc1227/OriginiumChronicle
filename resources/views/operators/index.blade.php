@@ -73,10 +73,10 @@
                         {{-- 只列「该世界里这类人物确实归属」的阵营：列一个点进去是空列表的选项没有意义。
                              阵营选项跟着当前的类型走：历史人物几乎没有阵营归属，
                              给历史人物列表挂一份「用不到的阵营下拉」只是噪音。 --}}
-                        <select name="faction" data-autosubmit>
+                        <select name="faction_id" data-autosubmit>
                             <option value="">全部阵营</option>
                             @foreach ($factions as $faction)
-                                <option value="{{ $faction->id }}" @selected($filters['faction'] === $faction->id)>
+                                <option value="{{ $faction->id }}" @selected($filters['faction_id'] === $faction->id)>
                                     {{ $faction->name }}
                                 </option>
                             @endforeach
@@ -113,7 +113,7 @@
         @if ($characters->isEmpty())
             <div class="panel">
                 <div class="empty">
-                    @if ($filters['q'] || $filters['faction'])
+                    @if ($filters['q'] || $filters['faction_id'])
                         {{-- 「没搜到」与「根本没有人」要分开说：前者该调筛选，后者该去别的世界看 --}}
                         没有符合筛选条件的{{ $world->label() }}人员。<br>
                         <span class="small">换个关键词，或点侧栏「重置」看全部。</span>
@@ -164,7 +164,7 @@
                                  每个都能点着筛 —— 多记的那一条若点不动，读者读不出它的用处。 --}}
                             @foreach ($character->factions as $faction)
                                 <a class="chip" data-clickable="1"
-                                   href="{{ route('operators.index', ['world' => $world->value, 'kind' => $filters['kind']->value, 'faction' => $faction->id]) }}">
+                                   href="{{ route('operators.index', ['world' => $world->value, 'kind' => $filters['kind']->value, 'faction_id' => $faction->id]) }}">
                                     {{ $faction->name }}
                                 </a>
                             @endforeach
