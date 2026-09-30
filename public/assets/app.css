@@ -1503,8 +1503,28 @@ table.tbl tbody tr:hover td { background: var(--bg-raised); }
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
     padding: 3px 0;
     letter-spacing: .03em;
+    /* 中文名是标题：一行放得下就不许折 —— 折行会把上下两组的间距挤乱一档 */
+    white-space: nowrap;
+}
+
+/*
+ * 微标签占据中间的空档，于是中文名与展开记号贴右成列 ——
+ * 各组的「纪元 / 出处 / 标签…」右沿齐、左沿不齐，读起来像一张表。
+ *
+ * 这里**不许出现省略号**：英文标签是信息（FACTION / CHARACTER 说明这一组
+ * 同时管阵营与人物），省掉就只剩「像什么」而没了「是什么」。两条做法保证它完整：
+ *   · 字距归零 —— 全局母题的 .16em 在窄侧栏里是奢侈品，等宽字体本就疏朗，
+ *     归零后 FACTION / CHARACTER 一行放得下（约省 20px）；
+ *   · 万一还放不下（极窄视口），宁可让它**折行**也不截断 —— 装饰占两行可以接受，
+ *     信息残缺不行。中文名那一侧不受影响（summary 上是 nowrap）。
+ */
+.filter-group > summary::before {
+    flex: 1 1 auto;
+    letter-spacing: 0;
+    white-space: normal;
 }
 
 .filter-group > summary::-webkit-details-marker { display: none; }
