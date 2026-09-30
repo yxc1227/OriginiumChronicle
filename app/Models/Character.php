@@ -37,6 +37,13 @@ class Character extends Model
     public const SPLASH_VARIANTS = [
         '1' => '精英1',
         '2' => '精英2',
+        // 塔卫二（终末地）每人只有一张初始立绘，没有精英／时装分档。键取 base 而不是 1，
+        // 免得页面上把那一张标成「精英1」—— 那说的不是事实。
+        'base' => '初始',
+        // 管理员是同一个人的两版（名单按性别拆成两行，见 CharacterAvatars 的 ALIASES）：
+        // 两版都留，标签就是「男」「女」。**声明顺序即展示顺序**（见 splashVariantSortKey）
+        'male' => '男',
+        'female' => '女',
     ];
 
     protected function casts(): array
@@ -283,7 +290,7 @@ class Character extends Model
      * 视图直接拿来渲染，不需要自己解析那列 JSON、也不需要自己排序 —— 摆放顺序
      * （精英一 → 精英二 → 时装）是数据的性质，不是某一页的排版偏好。
      *
-     * 空数组是常态：塔卫二的人员在来源侧没有立绘，历史人物根本不在干员名单里。
+     * 空数组仍然常见：历史人物根本不在干员名单里，名单之外的人也可能没有立绘。
      * 视图据此整块不渲染，而不是渲染一张碎图。
      *
      * @return list<array{key: string, label: string, url: string}>
@@ -329,15 +336,21 @@ class Character extends Model
     }
 
     /**
-     * 排序键。精英化状态在前、时装在后，各自按序号；认不出的键排在最后且按名字排。
+     * 排序键。表里的键（精英 → 初始 → 男/女）按**声明顺序**排，时装按序号排在其后，
+     * 认不出的键排在最后且按名字排。
+     *
+     * 用声明顺序而不是键本身的大小：`base`、`male`、`female` 这类非数字键没有大小可言 ——
+     * 强转成整数会全变成 0，同一人身上的两版就会随机排序。
      *
      * 拼成字符串而不是返回数组：PHP 用 `<=>` 比数组是先比长度再逐元素，
      * 在这里会把「时装1」排到「精英2」前面。
      */
     public static function splashVariantSortKey(string $key): string
     {
-        if (isset(self::SPLASH_VARIANTS[$key])) {
-            return sprintf('0-%03d', (int) $key);
+        $order = array_search($key, array_keys(self::SPLASH_VARIANTS), true);
+
+        if ($order !== false) {
+            return sprintf('0-%03d', $order);
         }
 
         if (preg_match('/^skin(\d+)$/', $key, $m) === 1) {

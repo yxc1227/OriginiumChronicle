@@ -747,9 +747,11 @@ class SeederIntegrityTest extends TestCase
             foreach ($character->splashes as $key => $relative) {
                 $images++;
 
-                // 变体号决定展示名，认不出的键会写进库里却没有任何标签可用
+                // 变体号决定展示名，认不出的键会写进库里却没有任何标签可用。
+                // `base` 是塔卫二的初始立绘（终末地没有精英／时装分档）；
+                // `male` / `female` 是管理员的两版 —— 名单按性别拆成两行，归到同一个人身上
                 $this->assertMatchesRegularExpression(
-                    '/^([12]|skin\d+)$/',
+                    '/^([12]|base|male|female|skin\d+)$/',
                     (string) $key,
                     $character->name.' 的立绘变体号无法识别：'.$key,
                 );
@@ -790,9 +792,9 @@ class SeederIntegrityTest extends TestCase
     /**
      * 立绘清单要能落到实处，且三类「空」各有各的性质，不能混为一谈。
      *
-     *  - 塔卫二整侧为空：fz.wiki 的干员条目只有文字与图标，**来源侧就没有立绘**
-     *    （见 bin/fetch-splashes.py 的说明）。写成断言是为了让将来的人一眼看到
-     *    「这不是漏抓」—— 少一条断言，下次就会有人去补一个补不出来的东西。
+     *  - 塔卫二：**2026-09-30 起有立绘** —— fz.wiki 的干员页带着美术，只是挂在页面外壳里
+     *    （CSS 背景/蒙版）而不是 `<img>`，先前那条「整侧为空」的断言建立在一次误读上，
+     *    已改成覆盖率（见 App\Support\CharacterSplashes 的类注释）。
      *  - 历史人物为空：他们根本不在干员名单里，没有立绘是应当的。
      *  - 「清单之外的名字」应为空：清单入库前已经过 `bin/fetch-splashes.py --prune-missing`
      *    清理 —— 来源名单比本仓库大的那一批（未实装的、卫戍协议形态、建制的无名单位）
@@ -854,10 +856,20 @@ class SeederIntegrityTest extends TestCase
             "泰拉干员的立绘覆盖率低于八成（{$covered}/{$total}）",
         );
 
-        $this->assertSame(
-            0,
-            Character::ofWorld(World::Talos)->whereNotNull('splashes')->count(),
-            '塔卫二在来源侧没有立绘，这一列应当整侧为空',
+        /*
+         * 塔卫二的覆盖率：卡 90%（而不是泰拉那条的 80%）—— 收紧的依据是现状，不是
+         * 一个凭空的期待。33 人里 32 人有图，唯一没有的是**阿伯莉**：她不是可玩干员、
+         * 不在 fz.wiki 的干员名单里（种子那边同样刻意留空），不是采集漏抓。
+         * 因此这里留一个名额的余地，而不是卡「人人都有」。
+         */
+        $talos = Character::ofWorld(World::Talos)->where('kind', CharacterKind::Operator);
+        $talosTotal = $talos->count();
+        $talosCovered = $talos->whereNotNull('splashes')->count();
+
+        $this->assertGreaterThanOrEqual(
+            (int) ceil($talosTotal * 0.9),
+            $talosCovered,
+            "塔卫二干员的立绘覆盖率低于九成（{$talosCovered}/{$talosTotal}）",
         );
 
         $this->assertSame(
@@ -865,6 +877,20 @@ class SeederIntegrityTest extends TestCase
             Character::where('kind', CharacterKind::Historical)->whereNotNull('splashes')->count(),
             '历史人物不在干员名单里，不该有立绘',
         );
+
+        /*
+         * 管理员的**两版都要留住**：名单把他按性别拆成两行，库里是同一个人的时候，
+         * 头像那边只有一格（先到先得），立绘这边按变体存、两版都在。
+         * 少一张就意味着又被当成了「库外的一行」——那正是 2026-09-30 修掉的错。
+         */
+        $endmin = Character::where('world', World::Talos)->where('name', '管理员')->first();
+
+        $this->assertNotNull($endmin, '管理员不在库里');
+
+        $variants = array_keys((array) $endmin->splashes);
+        sort($variants);
+
+        $this->assertSame(['female', 'male'], $variants, '管理员应当同时有男、女两版立绘');
     }
 
     /**

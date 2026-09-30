@@ -63,7 +63,7 @@ class CharacterAvatarsTest extends TestCase
         // 泰拉与塔卫二是两套独立名单：同名也只是巧合，必须各回各的世界
         $talos = Character::create(['name' => '佩丽卡', 'slug' => 'chr-perlica', 'world' => World::Talos]);
         $noFile = Character::create(['name' => '凯尔希', 'slug' => 'chr-kelci']);
-        // 管理员是名单归并的产物（管理员·男 入库、·女 跳过），头像跟同一裁决走
+        // 管理员：名单按性别是两行，都归到库内这一个人；头像只有一格，先到先得
         $endmin = Character::create(['name' => '管理员', 'slug' => 'chr-endmin', 'world' => World::Talos]);
 
         $root = storage_path('framework/testing/avatars-'.uniqid());
@@ -72,6 +72,8 @@ class CharacterAvatarsTest extends TestCase
         File::put($root.'/terra/阿米娅.png', 'png');
         File::put($root.'/talos/佩丽卡.webp', 'webp');
         File::put($root.'/talos/管理员·男.webp', 'webp');
+        // 女那行的图也备好：它本该被「先到先得」挡下，不是因为文件缺失才没挂上
+        File::put($root.'/talos/管理员·女.webp', 'webp');
         // 凯尔希在清单里、文件却没复制过来：不能写出一个 404 的路径
 
         $manifest = [
@@ -84,6 +86,7 @@ class CharacterAvatarsTest extends TestCase
             'fz' => ['items' => [
                 ['name' => '佩丽卡', 'file' => '/somewhere/else/fz/佩丽卡.webp'],
                 ['name' => '管理员·男', 'file' => '/somewhere/else/fz/管理员·男.webp'],
+                ['name' => '管理员·女', 'file' => '/somewhere/else/fz/管理员·女.webp'],
             ]],
         ];
         $manifestPath = $root.'/manifest.json';
@@ -97,6 +100,7 @@ class CharacterAvatarsTest extends TestCase
 
         $this->assertSame('assets/avatars/terra/阿米娅.png', $terra->fresh()->avatar);
         $this->assertSame('assets/avatars/talos/佩丽卡.webp', $talos->fresh()->avatar);
+        // 两行归一人：头像只有一格，先到的那行（名单里男在前）说了算，不被后一行覆盖
         $this->assertSame('assets/avatars/talos/管理员·男.webp', $endmin->fresh()->avatar);
         // 文件缺失：路径不能落到库里，否则页面就是一张碎图
         $this->assertNull($noFile->fresh()->avatar);
