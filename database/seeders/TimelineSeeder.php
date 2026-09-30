@@ -28,6 +28,7 @@ use App\Support\CharacterAvatars;
 use App\Support\CharacterSplashes;
 use App\Support\CorpusLocator;
 use App\Support\EntityEmblems;
+use App\Support\RaceIllustrations;
 use App\Support\TerraDate;
 use App\Support\TerraTourCorpus;
 use Illuminate\Database\Seeder;
@@ -82,6 +83,8 @@ class TimelineSeeder extends Seeder
         $this->seedCharacterAvatars();
         // 立绘同理，只是一个人可能挂上精英一与精英二两张
         $this->seedCharacterSplashes();
+        // 种族示意接在立绘之后：它挑的是「有立绘的那位干员」，先有立绘才挑得动
+        $this->seedRaceIllustrations();
         // 徽记接在地名树与阵营之后：它要往 places.logo 与 factions.logo 各写一次
         $this->seedEntityEmblems();
         $this->seedTerms();
@@ -2571,6 +2574,43 @@ TXT,
             $stats['images'],
             $stats['missing_file'],
             count($stats['unknown']),
+        ));
+    }
+
+    /**
+     * 种族示意立绘的接入。
+     *
+     * 与头像 / 立绘 / 徽记同一形状：本仓库自己裁定的一张对照表（不来自任何来源站），
+     * 缺了照常跑完，但少了什么必须说出来。
+     *
+     * 三处「说出来」分别对应三种失败：
+     *  · 裁定表里的名字在库里找不到、或那人的种族不是这一族 —— 表与字典脱节了；
+     *  · 被点到的人没有立绘 —— 页面会挖出一块空白；
+     *  · 字典里有、两张表都没有的种族 —— 新增了种族却没人裁定它用谁示意。
+     * 已声明的缺口（挑不出人的种族，见 RaceIllustrations::GAPS）单独印一行 Info，
+     * 它不是问题，是事实。
+     */
+    private function seedRaceIllustrations(): void
+    {
+        $stats = RaceIllustrations::associate();
+
+        foreach ($stats['problems'] as $problem) {
+            $this->command?->warn('种族示意：'.$problem);
+        }
+
+        foreach ($stats['gaps'] as $name) {
+            $this->command?->info(sprintf(
+                '种族示意：%s 留空（%s）。',
+                $name,
+                RaceIllustrations::GAPS[$name],
+            ));
+        }
+
+        $this->command?->info(sprintf(
+            '种族示意：%d 个种族指向了干员立绘，声明留空 %d 个，问题 %d 个。',
+            $stats['linked'],
+            count($stats['gaps']),
+            count($stats['problems']),
         ));
     }
 

@@ -599,4 +599,39 @@ class DictionaryPagesTest extends TestCase
             ->assertOk()
             ->assertSee(route('races.index').'#race-'.$race->slug);
     }
+
+    /**
+     * 种族卡上的示意图版必须**指名是谁的立绘**，而且点得进去。
+     *
+     * 这一块是替图（书里那张种族插图不在本仓库手上，见 App\Support\RaceIllustrations）：
+     * 「图」与「谁」缺一不可 —— 只显示一张图，读者就会把它当成书里那张官方插图；
+     * 只写名字不给出口，读者想问「凭什么是他」也无处可问。
+     */
+    public function test_race_card_names_the_operator_standing_in_for_it(): void
+    {
+        $race = $this->race('菲林', null);
+
+        $character = Character::create([
+            'name' => '测试示意干员',
+            'slug' => 'chr-fixture-specimen',
+            'kind' => 'operator',
+            'race_id' => $race->id,
+            'splashes' => [
+                '1' => 'assets/splashes/terra/fixture_1.avif',
+                '2' => 'assets/splashes/terra/fixture_2.avif',
+            ],
+            'sort_order' => 0,
+        ]);
+
+        $race->update(['illustration_id' => $character->id]);
+
+        $this->get(route('races.index'))
+            ->assertOk()
+            ->assertSee(route('operators.show', $character), false)
+            ->assertSee('race-art__stage', false)
+            // 取精英二那张，并把版本写出来 —— 读者要知道这不是随机挑的一张
+            ->assertSee('assets/splashes/terra/fixture_2.avif')
+            ->assertDontSee('assets/splashes/terra/fixture_1.avif')
+            ->assertSee('精英2');
+    }
 }

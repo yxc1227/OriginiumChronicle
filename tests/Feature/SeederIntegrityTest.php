@@ -22,6 +22,7 @@ use App\Support\CharacterAvatars;
 use App\Support\CharacterSplashes;
 use App\Support\CorpusLocator;
 use App\Support\EntityEmblems;
+use App\Support\RaceIllustrations;
 use App\Support\TerraDate;
 use App\Support\TerraDateParser;
 use App\Support\TerraTourCorpus;
@@ -863,6 +864,88 @@ class SeederIntegrityTest extends TestCase
             0,
             Character::where('kind', CharacterKind::Historical)->whereNotNull('splashes')->count(),
             '历史人物不在干员名单里，不该有立绘',
+        );
+    }
+
+    /**
+     * 种族示意立绘：挂到的人必须**确实属于这一族、且确实有立绘**。
+     *
+     * 这一张图是**替图**（书里那张种族插图不在本仓库手上，理由与挑选标准见
+     * App\Support\RaceIllustrations），因此这里要守的不是「好不好看」，而是三条会静默出错的：
+     * 挂到别的族的人（页面上会写着「示意 · 某族」却挂着别族的脸）、
+     * 挂到没有立绘的人（卡片上挖出一块空白）、以及两处都没写清楚的留空。
+     */
+    public function test_race_illustrations_point_at_a_splashed_member_of_that_race(): void
+    {
+        $races = Race::with('illustration')->get();
+
+        $this->assertGreaterThan(
+            0,
+            $races->whereNotNull('illustration_id')->count(),
+            '没有任何种族挂上示意立绘',
+        );
+
+        foreach ($races as $race) {
+            if ($race->illustration_id === null) {
+                continue;
+            }
+
+            $this->assertNotNull($race->illustration, $race->name.' 指向的干员已经不存在了');
+
+            $this->assertSame(
+                $race->id,
+                $race->illustration->race_id,
+                $race->name.' 的示意干员并不属于这一族 —— 这正是在页面上看不出、却读起来是错的那种数据',
+            );
+
+            $this->assertNotSame(
+                [],
+                $race->illustration->splashList(),
+                $race->name.' 的示意干员没有立绘，卡片上会挖出一块空白',
+            );
+
+            // 优先精英二：立绘里信息最全的一张。有精英二却用了别的，说明挑选规则没生效
+            $keys = array_column($race->illustration->splashList(), 'key');
+
+            if (in_array('2', $keys, true)) {
+                $this->assertSame(
+                    '2',
+                    $race->illustrationSplash()['key'] ?? null,
+                    $race->name.' 有精英二立绘，却没拿它当图版',
+                );
+            }
+        }
+    }
+
+    /**
+     * 没有图版的种族必须是**声明过的缺口**，而不是漏掉的。
+     *
+     * 断言留空的那一份名单，而不是「大概有一两个」：将来《大地巡旅》补录了新种族，
+     * 它会以「多了一个留空」的形式在这里失败 —— 那正是要人去裁定的信号。
+     */
+    public function test_race_illustrations_leave_only_declared_gaps_unfilled(): void
+    {
+        $blank = Race::whereNull('illustration_id')->orderBy('name')->pluck('name')->all();
+
+        $this->assertSame(
+            collect(array_keys(RaceIllustrations::GAPS))->sort()->values()->all(),
+            $blank,
+            '留空的种族与 RaceIllustrations::GAPS 声明的不一致',
+        );
+    }
+
+    /**
+     * 裁定表本身要完全对得上字典：不能有多余的名字，也不能有一条落不下去。
+     */
+    public function test_race_illustration_rulings_all_resolve(): void
+    {
+        $stats = RaceIllustrations::associate();
+
+        $this->assertSame([], $stats['problems'], '种族示意有落不下的裁定');
+        $this->assertSame(
+            Race::count() - count(RaceIllustrations::GAPS),
+            $stats['linked'],
+            '落下的种族数与「字典里除声明缺口之外的全部」不符',
         );
     }
 

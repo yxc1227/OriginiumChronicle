@@ -2311,6 +2311,81 @@ img.avatar {
     .art-panel { flex: 1 1 100%; }
 }
 
+/* ---------------------------------------------------------------- 种族示意 */
+
+/*
+ * 种族卡片上的示意立绘（可选谁、为什么是替图，见 App\Support\RaceIllustrations）。
+ *
+ * 卡片是网格里的一格（.operator-grid 最窄 330px），所以图版不能照抄详情页的做法：
+ * 那里可以让立绘按原比例铺满左栏，这里放一张 1:2.2 的长条就会把整行卡片拉到上千像素。
+ * 因此用一个**固定方形的展示台**，图在里面按自身比例缩放（不裁切）——
+ * 长条的立绘居中变窄、横置的立绘占满宽度，卡片高度却是齐的。
+ *
+ * 与详情页的 .art__stage 同一套语言：比卡片再暗一档的底（--bg-input），
+ * 底部一条细线当基准轴 —— 与时间轴的轴、工程图纸的底线是同一句话。
+ */
+.race-art { margin: 0; }
+
+.race-art__stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1 / 1;
+    padding: 10px 8px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+}
+
+.race-art__stage::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 6px;
+    height: 1px;
+    background: var(--border);
+}
+
+/* 不裁切是刻意的：读者要看的就是耳朵、角、尾巴这些长在边缘上的东西，
+   裁掉一角就等于把这张「示意」的意义裁掉了 */
+.race-art__stage img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+}
+
+/* 缺口种族（名下的干员在来源侧没有立绘）照样占一块同样大小的图版：
+   网格里留一块空白会被读成「图没加载出来」。底纹沿用站内那层 45° 斜纹
+   （与表头、顶栏警示条同一句话），黄得非常淡，只为让「这里是空的」看得出是刻意的。 */
+.race-art__stage--none {
+    background-image: repeating-linear-gradient(45deg,
+        rgba(255, 212, 0, .045) 0 5px,
+        transparent 5px 10px);
+}
+
+.race-art__stage--none .mono { font-size: 11px; letter-spacing: .14em; }
+
+/* 图注：说清这是替图并点名是谁的立绘。有图与缺口两种卡片共用这一行，位置才一致。
+   排成一行行内文本而不是 flex：这里有「示意 · 名字 精英2」三段，
+   flex 的 gap 会把「精英2」推得离名字很远，读起来像两个不相干的字段。 */
+.race-art__caption {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-dim);
+}
+
+/* 名字是这张图的出口：读者想问「凭什么是他」，就该点得进去 */
+.race-art__who {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border-strong);
+}
+
+.race-art__who:hover { color: var(--accent); border-bottom-color: var(--accent-line); }
+
 /* ---------------------------------------------------------------- 徽记 */
 
 /* 地名与组织的徽记（来源与关联规则见 app/Support/EntityEmblems，采集见 bin/fetch-emblems.py）。
