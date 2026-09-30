@@ -147,6 +147,8 @@ Artisan::command('citations:verify {--fix : 重算并回写偏移与行号（不
 |      容器里的 GD 不能栅格化 SVG。这两份由同一几何经 headless Chrome 渲染、
 |      再按 ICO 规范封装，属于「改了 Logo.php 才需要重跑」的一次性产物，
 |      步骤记在 docs/LOGO.md §6。
+|   4. 仓库图标（icon.png 与 .idea/icon.png）：上面那张 180 的副本，供 Sourcetree、
+|      JetBrains 这类「列表类工具」显示仓库图标（读哪儿是它们的约定），同样记在 §6。
 |
 | 改几何后跑一次本命令，就能保证 favicon 与页面里的标记不会长得不一样。
 */
@@ -157,7 +159,8 @@ Artisan::command('logo:export', function () {
     file_put_contents($path, $svg . "\n");
 
     $this->info('已导出 public/favicon.svg（' . strlen($svg) . ' 字节）。');
-    $this->line('  光栅版本（favicon.ico / apple-touch-icon.png）需按 docs/LOGO.md §6 重新渲染。');
+    $this->line('  光栅版本（favicon.ico / apple-touch-icon.png）需按 docs/LOGO.md §6 重新渲染；');
+    $this->line('  仓库图标（icon.png / .idea/icon.png）是它的副本，同一节里一并复制。');
 
     return self::SUCCESS;
 })->purpose('从 App\Support\Logo 导出浏览器图标文件');
