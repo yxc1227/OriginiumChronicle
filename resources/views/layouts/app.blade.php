@@ -16,7 +16,11 @@
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
 
-    <link rel="stylesheet" href="{{ asset('assets/app.css') }}">
+    {{--
+        样式与脚本带上版本串（App\Support\AppVersion）：零构建的静态文件靠 URL 变化破缓存，
+        否则改版后读者会一直看到缓存里的旧文件。因此**改了 assets/ 下的 CSS/JS 就要 bump 版本号**。
+    --}}
+    <link rel="stylesheet" href="{{ \App\Support\AppVersion::asset('assets/app.css') }}">
 </head>
 <body data-page="@yield('page', 'timeline')">
 
@@ -118,6 +122,12 @@
     <div class="spacer"></div>
 
     <div class="userbox">
+        {{--
+            系统版本号：放在系统状态区（角色 / 只读）之前 —— 报障时读者能一句话说清
+            自己看到的是哪一版。它同时是上面两个资产 URL 上那个缓存串的来源。
+        --}}
+        <span class="faint small mono" title="系统版本">{{ \App\Support\AppVersion::label() }}</span>
+
         @auth
             <span class="role-chip" data-role="{{ auth()->user()->role()->value }}">{{ auth()->user()->role()->label() }}</span>
 
@@ -156,6 +166,18 @@
 <div class="shell">
     @yield('content')
 </div>
+
+{{--
+    页脚：版本号在这里有一处**固定**落点（另一处在顶栏的系统状态区，见 .userbox）。
+
+    两处都留是有意的 —— 顶栏那枚在第一屏内（截图与报障都指得上），页脚这枚带发行日期
+    与「非官方」声明，翻到底也找得到。版本号的意义就是「说得清这是哪一版」。
+--}}
+<footer class="foot">
+    <span class="foot__ver">{{ \App\Support\AppVersion::label() }}</span>
+    <span class="faint small">{{ \App\Support\AppVersion::releasedAt() }} 发行</span>
+    <span class="faint small">非官方粉丝项目 · 与鹰角网络无隶属或授权关系</span>
+</footer>
 
 <div class="toasts" id="toasts"></div>
 
@@ -218,7 +240,7 @@
 </script>
 
 @stack('boot')
-<script src="{{ asset('assets/app.js') }}"></script>
+<script src="{{ \App\Support\AppVersion::asset('assets/app.js') }}"></script>
 @stack('scripts')
 
 </body>

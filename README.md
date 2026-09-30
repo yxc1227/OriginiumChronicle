@@ -7,15 +7,20 @@
 **《明日方舟》系列的统一事件时间表**：把散落在主线、活动与设定集里的事件抽出来，
 按各自的游戏内纪年（泰拉历 / 塔罗斯历）排序，并让每一条时间都带着它的可靠程度。
 
+<img alt="version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-ffd400">
 <img alt="PHP 8.3+" src="https://img.shields.io/badge/PHP-8.3%2B-777bb4?logo=php&logoColor=white">
 <img alt="Laravel 13" src="https://img.shields.io/badge/Laravel-13-ff2d20?logo=laravel&logoColor=white">
-<img alt="tests 339 passed" src="https://img.shields.io/badge/tests-339%20passed-3fb950">
+<img alt="tests 350 passed" src="https://img.shields.io/badge/tests-350%20passed-3fb950">
 <img alt="frontend zero-build" src="https://img.shields.io/badge/frontend-zero--build-ffd400">
 <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-blue">
 
+<sub>版本与每次发行的改动见 [CHANGELOG.md](CHANGELOG.md)。同一个号在站点上有两处可见（顶栏右上角、页脚），
+也贴在静态资源的 URL 上（`?v=`，用来破缓存）；徽章、配置文件、更新记录三处的数字由 `AppVersionTest` 盯着，不会漂移。</sub>
+
 <!-- 截图维护：1440×1000 视口 @2x（输出 2880×2000），Chrome headless 带
      --force-prefers-reduced-motion 拍摄 —— 站点首屏外内容靠 IntersectionObserver
-     揭示，关掉动效才能一次拍到完整静态画面；改版后按同样参数重拍即可。 -->
+     揭示，关掉动效才能一次拍到完整静态画面；改版后按同样参数重拍即可。
+     注意右上角会带上**当版版本号**：bump 版本号之后，这张图要和徽章一起重拍/更新。 -->
 <img src="docs/screenshot.png" alt="时间线首页：世界切换器 + 多维筛选栏 + 单主轴的纪元分段年表（分段可折叠、带快速导航）" width="100%">
 
 </div>
@@ -136,7 +141,7 @@ docker exec -w /app <容器名> php artisan migrate:fresh --seed
 php artisan migrate:fresh --seed      # 重建数据库 + 灌入起始语料
                                       # 种子对条目是「已存在就整批跳过」：改了种子内容要用 fresh，
                                       # 单跑 db:seed 只会刷新字典
-php artisan test                      # 全量测试（341 项 / 8976 断言）
+php artisan test                      # 全量测试（350 项 / 3003 断言；另有 13 项因本地来源缺失而跳过）
 ./vendor/bin/pint                     # 代码风格（Laravel 官方风格）
 
 php artisan timeline:scan             # 全量一致性体检 → 异常收件箱
@@ -314,7 +319,8 @@ reviewer 锁定后 editor 完全不可写、出处归属（`source_user`）限�
 ## 测试
 
 ```bash
-php artisan test                      # 341 项 / 8976 断言
+php artisan test                      # 350 项 / 3003 断言（13 项跳过：语料、两份 wiki 名单、
+                                      # 头像与立绘清单都不随仓库分发，相关断言会明确跳过而非失败）
 ```
 
 <details>
