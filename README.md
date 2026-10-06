@@ -10,7 +10,7 @@
 <img alt="version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-ffd400">
 <img alt="PHP 8.3+" src="https://img.shields.io/badge/PHP-8.3%2B-777bb4?logo=php&logoColor=white">
 <img alt="Laravel 13" src="https://img.shields.io/badge/Laravel-13-ff2d20?logo=laravel&logoColor=white">
-<img alt="tests 350 passed" src="https://img.shields.io/badge/tests-350%20passed-3fb950">
+<img alt="tests 352 passed" src="https://img.shields.io/badge/tests-352%20passed-3fb950">
 <img alt="frontend zero-build" src="https://img.shields.io/badge/frontend-zero--build-ffd400">
 <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-blue">
 
@@ -105,6 +105,7 @@ docker exec -w /app <容器名> php artisan migrate:fresh --seed
 | `TIMELINE_AI_DRIVER` | `heuristic` | AI 梳理驱动。`heuristic` 是零依赖规则抽取；改 `openai-compatible` 才真正调用模型 |
 | `TIMELINE_AI_ENDPOINT` / `TIMELINE_AI_KEY` / `TIMELINE_AI_MODEL` | OpenAI 端点 / 空 / `gpt-4o-mini` | 仅 `openai-compatible` 使用；**没有 Key 时静默降级回 `heuristic`**，不会让站点挂掉 |
 | `TIMELINE_PER_PAGE` / `TIMELINE_LEASE_SECONDS` / `TIMELINE_REVISION_KEEP` | 见 `config/timeline.php` | 每页条数 / 编辑租约时长 / 版本快照保留数 |
+| `TIMELINE_DUPLICATE_SIMILARITY` / `TIMELINE_OVERLOADED_DAY` / `TIMELINE_SOURCE_YEAR_TOLERANCE` | 见 `config/timeline.php` | 一致性巡检的判定松紧（不是功能开关） |
 | `IDENTITY_REGISTRATION` | `true` | 是否开放自助注册 |
 | `IDENTITY_AVATAR_MAX_KB` / `IDENTITY_AVATAR_SIZE` | `2048` / `256` | 头像上传上限与输出边长 |
 | `HYPERGRYPH_CLIENT_ID` / `HYPERGRYPH_CLIENT_SECRET` / `HYPERGRYPH_AUTHORIZE_URL` / `HYPERGRYPH_TOKEN_URL` / `HYPERGRYPH_USERINFO_URL` | 空 | 鹰角通行证渠道；**五项全空时显示「未启用」**，不影响其他功能 |
@@ -141,7 +142,7 @@ docker exec -w /app <容器名> php artisan migrate:fresh --seed
 php artisan migrate:fresh --seed      # 重建数据库 + 灌入起始语料
                                       # 种子对条目是「已存在就整批跳过」：改了种子内容要用 fresh，
                                       # 单跑 db:seed 只会刷新字典
-php artisan test                      # 全量测试（350 项 / 3003 断言；另有 13 项因本地来源缺失而跳过）
+php artisan test                      # 全量测试（352 项 / 3035 断言；另有 13 项因本地来源缺失而跳过）
 ./vendor/bin/pint                     # 代码风格（Laravel 官方风格）
 
 php artisan timeline:scan             # 全量一致性体检 → 异常收件箱
@@ -319,7 +320,7 @@ reviewer 锁定后 editor 完全不可写、出处归属（`source_user`）限�
 ## 测试
 
 ```bash
-php artisan test                      # 350 项 / 3003 断言（13 项跳过：语料、两份 wiki 名单、
+php artisan test                      # 352 项 / 3035 断言（13 项跳过：语料、两份 wiki 名单、
                                       # 头像与立绘清单都不随仓库分发，相关断言会明确跳过而非失败）
 ```
 
