@@ -49,6 +49,26 @@ class SeederIntegrityTest extends TestCase
     }
 
     /**
+     * 来源文件不在仓库里时的统一出口。
+     *
+     * 《大地巡旅》原文、两份 wiki 干员名单、头像清单与立绘清单都**刻意不入库**：
+     * 语料是书里的原文，名单与清单出自 wiki 抓取（立绘清单还记着 PRTS 的图片地址），
+     * 都有版权上的顾虑 —— 2026-09-30 用户拍板：不再随仓库记录。
+     *
+     * 缺了它们，相关那部分数据在库里就是空的 —— 这不是坏，是**受支持的形态**（种子器照常跑完）。
+     * 断言随之跳过，但跳过原因必须说清「哪个文件、为什么它可以不在」，
+     * 免得下一个人把「跳过」读成「漏抓」，再花半天去补一份补不出来的东西。
+     */
+    private function requiresSource(string $relative, string $why): void
+    {
+        if (! is_file(base_path($relative))) {
+            $this->markTestSkipped(
+                "缺少 {$relative} —— {$why}。该来源不随仓库分发，相关内容留空是正常的",
+            );
+        }
+    }
+
+    /**
      * 最重要的一条不变量：每条的 date_display 重新解析后必须与落库的索引一致。
      *
      * 这能抓住「改了原文但忘了改索引」「复制粘贴时年份写错」这类静默错误。
@@ -176,6 +196,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_terra_tour_chronicle_entries_are_dated_and_quoted(): void
     {
+        $this->requiresSource('docs/TERRA A JOURNEY.txt', '《大地巡旅》原文，版权归鹰角网络所有');
+
         $rows = DB::table('event_source')
             ->join('sources', 'sources.id', '=', 'event_source.source_id')
             ->join('events', 'events.id', '=', 'event_source.event_id')
@@ -210,6 +232,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_every_quote_is_locatable_in_its_source_corpus(): void
     {
+        $this->requiresSource('docs/TERRA A JOURNEY.txt', '《大地巡旅》原文，版权归鹰角网络所有');
+
         $violations = [];
         $mismatched = [];
         $checked = 0;
@@ -737,6 +761,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_splashes_resolve_to_files_that_exist(): void
     {
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
         $characters = Character::whereNotNull('splashes')->get();
 
         $this->assertGreaterThan(0, $characters->count(), '没有任何人物挂上立绘，这一列等于没用');
@@ -802,11 +828,11 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_splash_manifest_links_every_entry(): void
     {
-        $manifest = base_path('docs/splashes.json');
+        // 立绘清单不再随仓库分发（2026-09-30，版权顾虑）：缺它就是「这一台没有来源」，
+        // 不是坏 —— 库里的 859 张图仍在仓库里，只是没有清单把它们关联到人身上
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
 
-        // 清单随仓库分发（记的是相对 public/ 的路径，与头像那份 ignore 掉的外部清单相反），
-        // 所以本地不该缺它
-        $this->assertFileExists($manifest, 'docs/splashes.json 随仓库分发，不应缺失');
+        $manifest = base_path('docs/splashes.json');
 
         $stats = CharacterSplashes::associate($manifest, public_path());
 
@@ -903,6 +929,9 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_race_illustrations_point_at_a_splashed_member_of_that_race(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
         $races = Race::with('illustration')->get();
 
         $this->assertGreaterThan(
@@ -951,6 +980,9 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_race_illustrations_leave_only_declared_gaps_unfilled(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
         $blank = Race::whereNull('illustration_id')->orderBy('name')->pluck('name')->all();
 
         $this->assertSame(
@@ -965,6 +997,9 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_race_illustration_rulings_all_resolve(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
         $stats = RaceIllustrations::associate();
 
         $this->assertSame([], $stats['problems'], '种族示意有落不下的裁定');
@@ -1062,6 +1097,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_operator_roster_is_imported_without_overwriting_curated_people(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+
         $roster = json_decode((string) file_get_contents(base_path('docs/prts-干员一览.json')), true);
 
         $this->assertIsArray($roster);
@@ -1108,6 +1145,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_characters_can_belong_to_several_factions(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+
         $shark = Character::where('name', '幽灵鲨')->firstOrFail();
         $names = $shark->factions->pluck('name')->all();
 
@@ -1131,6 +1170,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_birth_places_are_resolved_into_place_nodes(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+
         $placeNames = Place::pluck('name')->all();
         $withBirthPlace = Character::with('birthPlace')->whereNotNull('birth_place')->get();
 
@@ -1314,6 +1355,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_talos_roster_is_imported_from_the_endfield_wiki(): void
     {
+        $this->requiresSource('docs/fz-干员一览.json', '终末地 Wiki 干员名单（wiki 抓取产物）');
+
         // 已有条目不被覆盖：管理员的人工简介与归属都还在；
         // 代号是**空字段** —— 由名单的 nameEn 照来源写法补上（只补空，不覆盖既有值）
         $endministrator = Character::where('name', '管理员')->firstOrFail();

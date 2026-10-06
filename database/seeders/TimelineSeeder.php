@@ -1331,8 +1331,14 @@ class TimelineSeeder extends Seeder
         // 不预置整本书有两个硬理由：版权边界（仓库只收引用所需的片段）与容量 ——
         // raw_text 是 MySQL TEXT（64 KB），而整书 1.16 MB 会被**静默截断**，
         // 那时引文偏移全部错位，比不存更危险。
-        // 原文文件不入库（见 .gitignore）；本地缺失时这一栏留空，seed 照常跑完。
+        // 原文文件不入库（见 .gitignore），**2026-09-30 起本机也不再保留**（版权考量）。
+        // 缺失时这一栏留空、seed 照常跑完 —— 但必须出声：否则「语料与引文全空」
+        // 看起来会像「这本书本来就没被引用过」。
         $tourCorpus = TerraTourCorpus::excerpt();
+
+        if ($tourCorpus === null) {
+            $this->command?->warn('未找到 docs/TERRA A JOURNEY.txt，出处「泰拉巡旅」的语料与逐字引文留空。');
+        }
 
         Source::where('slug', 'terra-tour')->update([
             'raw_text' => $tourCorpus['text'] ?? null,
@@ -2549,17 +2555,22 @@ TXT,
      * 与头像同一步骤的两条理由：先有人物才谈得上挂图；清单与图片都是本地资产，
      * 缺了照常跑完，但少了什么必须说出来。
      *
-     * 与头像的两处差别也照实说在输出里：一个人可能挂**多张**（精英一 / 精英二），
-     * 所以统计的是「多少张图」而不只是「多少人」；塔卫二在来源侧根本没有立绘
-     * （fz.wiki 的干员条目只有文字与图标），因此那一侧 0 张是正常结果，
-     * 不在这里报成缺失。
+     * 与头像的一处差别也照实说在输出里：一个人可能挂**多张**（泰拉按精英/时装分档，
+     * 管理员的男女两版也算两张），所以统计的是「多少张图」而不只是「多少人」。
+     *
+     * 清单**不随仓库分发**（它记着 PRTS 的图片地址，2026-09-30 用户拍板删除 ——
+     * 与那四份 seed 数据源同一个理由）：本地缺它是正常状态，跳过即可，
+     * 但要说出来 —— 静默跳过会被读成「采集漏了」。
      */
     private function seedCharacterSplashes(): void
     {
         $stats = CharacterSplashes::associate(base_path('docs/splashes.json'), public_path());
 
         if ($stats === null) {
-            $this->command?->warn('未找到或无法解析 docs/splashes.json，跳过立绘接入。');
+            $this->command?->warn(
+                '未找到 docs/splashes.json，跳过立绘接入（该清单不随仓库分发；'
+                    .'图片仍在 public/assets/splashes/ 里，只是没有索引把它们关联到人）。',
+            );
 
             return;
         }

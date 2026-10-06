@@ -2703,3 +2703,32 @@ img.avatar {
            而不是只有两团光斑附近的卡片才「有玻璃」 */
         radial-gradient(120% 90% at 50% 50%, rgba(255, 255, 255, .012), transparent 100%);
 }
+
+/* ---------------------------------------------------------------- 页脚 */
+
+/*
+   版本号的固定落点之一（另一处在顶栏的系统状态区，见 .userbox）。
+
+   两处都留是有意的 —— 顶栏那枚在第一屏内：截图、报障、口述「我看到的是哪一版」
+   都指得上；页脚这枚带发行日期与「非官方」声明，翻到底也找得到。
+   版本号的意义就是这句话，所以它必须在**页面上**，而不只在配置文件里。
+*/
+.foot {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 30px 22px 0;
+    padding: 16px 0 30px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+/* 版本号用亮色 + 等宽：它是这条页脚里唯一要「被看见」的东西，
+   发行日期与免责声明退到次级色 */
+.foot__ver {
+    font-family: var(--mono);
+    color: var(--text);
+    letter-spacing: 0.06em;
+}
