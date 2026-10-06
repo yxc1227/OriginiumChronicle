@@ -6,6 +6,7 @@ use App\Enums\CharacterKind;
 use App\Enums\World;
 use App\Models\Character;
 use App\Models\Faction;
+use App\Support\Search\Params;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -40,8 +41,11 @@ class OperatorController extends Controller
         $kind = CharacterKind::tryFrom($request->string('kind')->value()) ?? CharacterKind::Operator;
 
         $filters = [
-            'q' => trim((string) $request->string('q')->value()) ?: null,
-            'faction' => $request->integer('faction') ?: null,
+            // 参数读法统一走 Params：空值与 id 合法性只此一处。
+            // 从前的 trim(...) ?: null 会把关键词「0」当空值吞掉，是个真 bug
+            'q' => Params::text($request, 'q'),
+            // 阵营参数的正名是 faction_id（与时间线一致）；faction 是旧链接的别名
+            'faction_id' => Params::id($request, 'faction_id', 'faction'),
             'kind' => $kind,
         ];
 
@@ -56,11 +60,11 @@ class OperatorController extends Controller
             ->withCount('events')
             ->search($filters['q']);
 
-        if ($filters['faction'] !== null) {
+        if ($filters['faction_id'] !== null) {
             // 按阵营筛选时带上子阵营（选「罗德岛」应当也能筛出「医疗部」的人），
             // 且**命中任一归属即可**：一个人同时属「深海猎人」与「阿戈尔」时，
             // 按两个中任何一个筛都该找得到他 —— 否则多出来的那半归属等于没记
-            $ids = Faction::find($filters['faction'])?->selfAndDescendantIds() ?? [$filters['faction']];
+            $ids = Faction::find($filters['faction_id'])?->selfAndDescendantIds() ?? [$filters['faction_id']];
             $query->whereHas('factions', fn (Builder $q) => $q->whereIn('factions.id', $ids));
         }
 

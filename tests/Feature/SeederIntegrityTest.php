@@ -18,7 +18,11 @@ use App\Models\Race;
 use App\Models\Term;
 use App\Models\User;
 use App\Models\UserIdentity;
+use App\Support\CharacterAvatars;
+use App\Support\CharacterSplashes;
 use App\Support\CorpusLocator;
+use App\Support\EntityEmblems;
+use App\Support\RaceIllustrations;
 use App\Support\TerraDate;
 use App\Support\TerraDateParser;
 use App\Support\TerraTourCorpus;
@@ -42,6 +46,26 @@ class SeederIntegrityTest extends TestCase
     {
         parent::setUp();
         $this->seed(TimelineSeeder::class);
+    }
+
+    /**
+     * 来源文件不在仓库里时的统一出口。
+     *
+     * 《大地巡旅》原文、两份 wiki 干员名单、头像清单与立绘清单都**刻意不入库**：
+     * 语料是书里的原文，名单与清单出自 wiki 抓取（立绘清单还记着 PRTS 的图片地址），
+     * 都有版权上的顾虑 —— 2026-09-30 用户拍板：不再随仓库记录。
+     *
+     * 缺了它们，相关那部分数据在库里就是空的 —— 这不是坏，是**受支持的形态**（种子器照常跑完）。
+     * 断言随之跳过，但跳过原因必须说清「哪个文件、为什么它可以不在」，
+     * 免得下一个人把「跳过」读成「漏抓」，再花半天去补一份补不出来的东西。
+     */
+    private function requiresSource(string $relative, string $why): void
+    {
+        if (! is_file(base_path($relative))) {
+            $this->markTestSkipped(
+                "缺少 {$relative} —— {$why}。该来源不随仓库分发，相关内容留空是正常的",
+            );
+        }
     }
 
     /**
@@ -172,6 +196,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_terra_tour_chronicle_entries_are_dated_and_quoted(): void
     {
+        $this->requiresSource('docs/TERRA A JOURNEY.txt', '《大地巡旅》原文，版权归鹰角网络所有');
+
         $rows = DB::table('event_source')
             ->join('sources', 'sources.id', '=', 'event_source.source_id')
             ->join('events', 'events.id', '=', 'event_source.event_id')
@@ -206,6 +232,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_every_quote_is_locatable_in_its_source_corpus(): void
     {
+        $this->requiresSource('docs/TERRA A JOURNEY.txt', '《大地巡旅》原文，版权归鹰角网络所有');
+
         $violations = [];
         $mismatched = [];
         $checked = 0;
@@ -559,9 +587,88 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_dictionary_dimensions_are_consistent(): void
     {
-        // 种族：《大地巡旅》第四章立目的那些必须带概要
-        $this->assertGreaterThanOrEqual(16, Race::count(), '种族字典未覆盖书里立目的种族');
-        $this->assertGreaterThan(0, Race::whereNotNull('description')->count());
+        /*
+         * 种族：《大地巡旅》第四章立目的那些必须带概要。
+         *
+         * 第四章立目 32 个（另有温迪戈 / 鬼 / 阿纳萨只在萨卡兹条目里带过一句，也各自写明了）。
+         * 门槛卡在 32 而不是「大于 0」：这一栏曾经烂在「16 个有概要、另 20 个留空」上，
+         * 理由写的是「书上没立目」——而那是检索失误：后半章的标题丢了 `#` 前缀，
+         * 书名号里的目录结构对了，条目却数漏了。
+         */
+        $this->assertGreaterThanOrEqual(32, Race::whereNotNull('description')->count(), '书里立目的种族应当都有概要');
+        $this->assertGreaterThanOrEqual(36, Race::count(), '种族字典未覆盖书里立目的种族');
+
+        /*
+         * 核心机制词条要写够：源石与天灾这一层是全书写「泰拉怎么运转」的地方，
+         * 2026-09-26 依书把它们从「一句话定义」加厚到 80 字以上 —— 这条防的是退回一句话。
+         */
+        foreach (['天灾', '源石自然灾害', '源石尘降', '晶体外壳', '源石原矿', '固化源石结晶'] as $core) {
+            $term = Term::where('name', $core)->first();
+
+            $this->assertNotNull($term, "核心词条「{$core}」不在字典里");
+            $this->assertGreaterThanOrEqual(
+                80,
+                mb_strlen((string) $term->definition),
+                "核心词条「{$core}」的定义又变回一句话了",
+            );
+        }
+
+        /*
+         * 地名里「国家」这一层要写够：《大地巡旅》第五章给每个国家都写了整卷
+         * （概览 + 历史 + 地理 + 政治 + 结语）。2026-09-26 依书把这一层加厚过一轮 ——
+         * 这里卡的是**平均数**（个别国家本来就短），防的是整体退回一句话。
+         */
+        $this->assertGreaterThanOrEqual(
+            100,
+            (int) Place::where('world', 'terra')->where('kind', 'nation')->get()
+                ->avg(fn ($place) => mb_strlen((string) $place->description)),
+            '国家级的说明又退回一句话了',
+        );
+
+        /*
+         * 地名整体也要写够：2026-09-26 依书加厚过两轮（国家 42→143、王国 30→153、城市 28→53）。
+         * 同样卡平均 —— 省级、村级与莱塔尼亚九大区这类条目本来就只有一行注记（并列清单式），
+         * 强求逐条只会让它们掺水。
+         */
+        $this->assertGreaterThanOrEqual(
+            50,
+            (int) Place::where('world', 'terra')->get()
+                ->avg(fn ($place) => mb_strlen((string) $place->description)),
+            '泰拉地名的说明整体又变薄了',
+        );
+
+        /*
+         * 第六章「组织卷」的九个主打条目（含补篇罗德岛）要写够：它们在书里各自有专节
+         * （莱茵生命、黑钢国际、喀兰贸易、锈锤、雷神工业、太阳谷机械工业、企鹅物流、
+         * 鲤氏侦探事务所、罗德岛）。2026-09-26 依书把这一卷逐个加厚过一轮。
+         * 其余组织不在此列 —— 见下面「政体必须有说明」那条的注脚。
+         */
+        foreach ([
+            '莱茵生命', '黑钢国际', '喀兰贸易', '锈锤', '雷神工业',
+            '太阳谷机械工业', '企鹅物流', '鲤氏侦探事务所', '罗德岛',
+        ] as $name) {
+            $faction = Faction::where('name', $name)->first();
+
+            $this->assertNotNull($faction, "第六章组织卷的「{$name}」不在阵营库里");
+            $this->assertGreaterThanOrEqual(
+                100,
+                mb_strlen((string) $faction?->description),
+                "第六章组织卷的「{$name}」说明过薄",
+            );
+        }
+
+        /*
+         * 政体必须有说明：《大地巡旅》第五章给每个国家都写了整卷（概览 + 历史 + 地理 + 政治），
+         * 因此「某个国家没有说明」只可能是漏了，不可能是书里没有。
+         * 组织则不强求 —— 罗德岛的内部编制、塔卫二的组织与联动单位都不在这本书里，留空是诚实的。
+         */
+        $this->assertSame(
+            0,
+            Faction::where('kind', 'polity')
+                ->where(fn ($q) => $q->whereNull('description')->orWhere('description', ''))
+                ->count(),
+            '有政体没有说明：书里逐卷写过国家，这一栏不该有空',
+        );
         $this->assertSame(0, Character::whereNotNull('race_id')->whereDoesntHave('race')->count());
         $this->assertGreaterThan(0, Character::has('race')->count(), '没有任何人物挂上种族字典，链接等于没用');
 
@@ -584,6 +691,323 @@ class SeederIntegrityTest extends TestCase
         $this->assertGreaterThan(0, Term::count());
         $this->assertSame(0, Term::whereRaw("coalesce(definition, '') = ''")->count());
         $this->assertSame(0, Term::whereNotIn('category', array_keys(Term::CATEGORIES))->count());
+    }
+
+    /**
+     * 徽记路径必须指向真的存在的文件，且路径形状统一。
+     *
+     * 徽记是「锦上添花」的字段：绝大多数实体没有它，页面照常工作 —— 所以它烂掉时
+     * 最不容易被发现。列里写了值、文件名写错，页面只会安静地不显示那一枚，
+     * 或者更糟：渲染一张碎图。因此这里断言的是**路径与文件的一致性**，
+     * 而不是「有多少枚」。
+     */
+    public function test_emblems_resolve_to_files_that_exist(): void
+    {
+        $entities = Place::whereNotNull('logo')->get()
+            ->merge(Faction::whereNotNull('logo')->get());
+
+        $this->assertGreaterThan(0, $entities->count(), '没有任何实体挂上徽记，这一列等于没用');
+
+        foreach ($entities as $entity) {
+            $this->assertFileExists(
+                public_path($entity->logo),
+                $entity->name.' 的徽记指向了不存在的文件：'.$entity->logo,
+            );
+
+            // 落盘一律扁平地放在 assets/emblems/ 下：同一枚徽记常同时属于同名的
+            // 一行地名与一行政体，按世界分目录反而要把同一张图放两处。
+            $this->assertStringStartsWith('assets/emblems/', $entity->logo);
+            $this->assertStringNotContainsString(
+                '/',
+                substr($entity->logo, strlen('assets/emblems/')),
+                $entity->name.' 的徽记不在 assets/emblems/ 的平铺层里：'.$entity->logo,
+            );
+
+            // 库里存相对路径、界面上是 URL —— 两者都要能成立
+            $this->assertStringStartsWith('http', (string) $entity->logoUrl());
+        }
+    }
+
+    /**
+     * 徽记清单必须能把**每一条**都落到实处。
+     *
+     * 清单随仓库分发（与头像清单不同，它记的是相对路径），所以本地不该缺它。
+     * 三类缺口都要报错而不只是跳过：
+     *  - 清单不在 → 关联整段失效，页面上所有徽记一起消失；
+     *  - 文件缺失 → 那是一条注定 404 的路径；
+     *  - 字典之外的名字 → 清单与字典开始脱节，该重新对一遍。
+     */
+    public function test_emblem_manifest_links_every_entry(): void
+    {
+        $manifest = base_path('docs/emblems.json');
+
+        $this->assertFileExists($manifest, 'docs/emblems.json 随仓库分发，不应缺失');
+
+        $stats = EntityEmblems::associate($manifest, public_path());
+
+        $this->assertNotNull($stats);
+        $this->assertSame(0, $stats['missing_file'], '清单里的徽记有文件缺失');
+        $this->assertSame([], $stats['unknown'], '清单里有字典之外的名字');
+        $this->assertGreaterThan(0, $stats['places'], '没有一枚徽记落到地名上');
+        $this->assertGreaterThan(0, $stats['factions'], '没有一枚徽记落到阵营上');
+    }
+
+    /**
+     * 立绘路径必须指向真的存在的文件，变体号要认得出来。
+     *
+     * 与徽记同一条理由：立绘也是「锦上添花」的字段，烂掉时页面只会安静地不显示那一张，
+     * 或者更糟 —— 渲染一张碎图。因此断言的是**路径与文件的一致性**，
+     * 而不是「有多少张」；覆盖面的边界另见下一个用例。
+     */
+    public function test_splashes_resolve_to_files_that_exist(): void
+    {
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
+        $characters = Character::whereNotNull('splashes')->get();
+
+        $this->assertGreaterThan(0, $characters->count(), '没有任何人物挂上立绘，这一列等于没用');
+
+        $images = 0;
+
+        foreach ($characters as $character) {
+            foreach ($character->splashes as $key => $relative) {
+                $images++;
+
+                // 变体号决定展示名，认不出的键会写进库里却没有任何标签可用。
+                // `base` 是塔卫二的初始立绘（终末地没有精英／时装分档）；
+                // `male` / `female` 是管理员的两版 —— 名单按性别拆成两行，归到同一个人身上
+                $this->assertMatchesRegularExpression(
+                    '/^([12]|base|male|female|skin\d+)$/',
+                    (string) $key,
+                    $character->name.' 的立绘变体号无法识别：'.$key,
+                );
+
+                // 目录按**世界**分（与头像同一规矩）：来源是采集期的事，运行期只按世界落盘
+                $this->assertStringStartsWith(
+                    'assets/splashes/'.$character->world()->value.'/',
+                    $relative,
+                    $character->name.' 的立绘不在所属世界的目录里：'.$relative,
+                );
+
+                $this->assertFileExists(
+                    public_path($relative),
+                    $character->name.' 的立绘指向了不存在的文件：'.$relative,
+                );
+
+                // 库里存相对路径、界面上是 URL —— 两者都要能成立
+                foreach ($character->splashList() as $art) {
+                    $this->assertStringStartsWith('http', $art['url']);
+                    $this->assertNotSame('', $art['label']);
+                }
+            }
+        }
+
+        // 一个人可以有多张：合并计数应当不少于有立绘的人数
+        $this->assertGreaterThanOrEqual($characters->count(), $images);
+
+        // 立绘按**精英一 → 精英二 → 时装**排；顺序错了页面上的标签与图会对不上
+        foreach ($characters->take(20) as $character) {
+            $keys = array_column($character->splashList(), 'key');
+            $sorted = $keys;
+            usort($sorted, fn ($a, $b) => Character::splashVariantSortKey($a)
+                <=> Character::splashVariantSortKey($b));
+            $this->assertSame($sorted, $keys, $character->name.' 的立绘清单没有按变体排序');
+        }
+    }
+
+    /**
+     * 立绘清单要能落到实处，且三类「空」各有各的性质，不能混为一谈。
+     *
+     *  - 塔卫二：**2026-09-30 起有立绘** —— fz.wiki 的干员页带着美术，只是挂在页面外壳里
+     *    （CSS 背景/蒙版）而不是 `<img>`，先前那条「整侧为空」的断言建立在一次误读上，
+     *    已改成覆盖率（见 App\Support\CharacterSplashes 的类注释）。
+     *  - 历史人物为空：他们根本不在干员名单里，没有立绘是应当的。
+     *  - 「清单之外的名字」应为空：清单入库前已经过 `bin/fetch-splashes.py --prune-missing`
+     *    清理 —— 来源名单比本仓库大的那一批（未实装的、卫戍协议形态、建制的无名单位）
+     *    不会以孤儿文件的形式进仓库，因此这里出现任何「清单之外」都是真的脱节，必须查。
+     */
+    public function test_splash_manifest_links_every_entry(): void
+    {
+        // 立绘清单不再随仓库分发（2026-09-30，版权顾虑）：缺它就是「这一台没有来源」，
+        // 不是坏 —— 库里的 859 张图仍在仓库里，只是没有清单把它们关联到人身上
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
+        $manifest = base_path('docs/splashes.json');
+
+        $stats = CharacterSplashes::associate($manifest, public_path());
+
+        $this->assertNotNull($stats);
+        $this->assertSame(0, $stats['missing_file'], '清单里的立绘有文件缺失');
+        $this->assertGreaterThan(0, $stats['characters'], '没有一位人物关联上立绘');
+
+        /*
+         * 「清单之外的名字」应当为空 —— 这与徽记那份同一标准，而不是放宽。
+         *
+         * 立绘清单在入库前已经过 `bin/fetch-splashes.py --prune-missing`：PRTS 的
+         * 立绘名单比本仓库大（未实装的 F91、卫戍协议形态、预备干员-XX 建制单位、
+         * 制作组彩蛋），这些「库里没有的人」连同孤儿文件一起被清掉，不会进仓库。
+         * 因此这里一旦出现任何「清单之外」，都是真的脱节（要么清单忘了清理、
+         * 要么字典漏了该收录的人），而不是「来源本来就没有」的正当差异 ——
+         * 那种差异已经被采集层的清理吸收掉了。
+         *
+         * 断言的是「空」而不是「某份名字清单」，因为那份清单已经不存在了；
+         * 若要新增人名，正路是改字典（数据库），不是在这里追加例外。
+         */
+        $this->assertSame(
+            [],
+            $stats['unknown'],
+            '清单里出现了库里不存在的人物 —— 先跑 bin/fetch-splashes.py --prune-missing，'
+                .'再核对是否漏收了该人物',
+        );
+
+        // 有立绘的人里，绝大多数应当**两档都有**（精英一与精英二）；全库一个双档的
+        // 人都没有，说明多变体从清单到页面这一整条链断在某一处，而不是来源本来就没有
+        $this->assertGreaterThan(
+            0,
+            Character::whereNotNull('splashes')->get()
+                ->filter(fn (Character $c) => count((array) $c->splashes) > 1)
+                ->count(),
+            '没有任何人物挂上两档立绘，多变体这条路等于没走通',
+        );
+
+        // 覆盖率：泰拉干员里应当有八成以上拿得到立绘。这条比「清单之外有几个」更能
+        // 说明问题 —— 清单抓漏、关联退化都会先在这里掉下去。
+        $terraOperators = Character::ofWorld(World::Terra)->where('kind', CharacterKind::Operator);
+        $total = $terraOperators->count();
+        $covered = $terraOperators->whereNotNull('splashes')->count();
+
+        $this->assertGreaterThan(
+            (int) ($total * 0.8),
+            $covered,
+            "泰拉干员的立绘覆盖率低于八成（{$covered}/{$total}）",
+        );
+
+        /*
+         * 塔卫二的覆盖率：卡 90%（而不是泰拉那条的 80%）—— 收紧的依据是现状，不是
+         * 一个凭空的期待。33 人里 32 人有图，唯一没有的是**阿伯莉**：她不是可玩干员、
+         * 不在 fz.wiki 的干员名单里（种子那边同样刻意留空），不是采集漏抓。
+         * 因此这里留一个名额的余地，而不是卡「人人都有」。
+         */
+        $talos = Character::ofWorld(World::Talos)->where('kind', CharacterKind::Operator);
+        $talosTotal = $talos->count();
+        $talosCovered = $talos->whereNotNull('splashes')->count();
+
+        $this->assertGreaterThanOrEqual(
+            (int) ceil($talosTotal * 0.9),
+            $talosCovered,
+            "塔卫二干员的立绘覆盖率低于九成（{$talosCovered}/{$talosTotal}）",
+        );
+
+        $this->assertSame(
+            0,
+            Character::where('kind', CharacterKind::Historical)->whereNotNull('splashes')->count(),
+            '历史人物不在干员名单里，不该有立绘',
+        );
+
+        /*
+         * 管理员的**两版都要留住**：名单把他按性别拆成两行，库里是同一个人的时候，
+         * 头像那边只有一格（先到先得），立绘这边按变体存、两版都在。
+         * 少一张就意味着又被当成了「库外的一行」——那正是 2026-09-30 修掉的错。
+         */
+        $endmin = Character::where('world', World::Talos)->where('name', '管理员')->first();
+
+        $this->assertNotNull($endmin, '管理员不在库里');
+
+        $variants = array_keys((array) $endmin->splashes);
+        sort($variants);
+
+        $this->assertSame(['female', 'male'], $variants, '管理员应当同时有男、女两版立绘');
+    }
+
+    /**
+     * 种族示意立绘：挂到的人必须**确实属于这一族、且确实有立绘**。
+     *
+     * 这一张图是**替图**（书里那张种族插图不在本仓库手上，理由与挑选标准见
+     * App\Support\RaceIllustrations），因此这里要守的不是「好不好看」，而是三条会静默出错的：
+     * 挂到别的族的人（页面上会写着「示意 · 某族」却挂着别族的脸）、
+     * 挂到没有立绘的人（卡片上挖出一块空白）、以及两处都没写清楚的留空。
+     */
+    public function test_race_illustrations_point_at_a_splashed_member_of_that_race(): void
+    {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
+        $races = Race::with('illustration')->get();
+
+        $this->assertGreaterThan(
+            0,
+            $races->whereNotNull('illustration_id')->count(),
+            '没有任何种族挂上示意立绘',
+        );
+
+        foreach ($races as $race) {
+            if ($race->illustration_id === null) {
+                continue;
+            }
+
+            $this->assertNotNull($race->illustration, $race->name.' 指向的干员已经不存在了');
+
+            $this->assertSame(
+                $race->id,
+                $race->illustration->race_id,
+                $race->name.' 的示意干员并不属于这一族 —— 这正是在页面上看不出、却读起来是错的那种数据',
+            );
+
+            $this->assertNotSame(
+                [],
+                $race->illustration->splashList(),
+                $race->name.' 的示意干员没有立绘，卡片上会挖出一块空白',
+            );
+
+            // 优先精英二：立绘里信息最全的一张。有精英二却用了别的，说明挑选规则没生效
+            $keys = array_column($race->illustration->splashList(), 'key');
+
+            if (in_array('2', $keys, true)) {
+                $this->assertSame(
+                    '2',
+                    $race->illustrationSplash()['key'] ?? null,
+                    $race->name.' 有精英二立绘，却没拿它当图版',
+                );
+            }
+        }
+    }
+
+    /**
+     * 没有图版的种族必须是**声明过的缺口**，而不是漏掉的。
+     *
+     * 断言留空的那一份名单，而不是「大概有一两个」：将来《大地巡旅》补录了新种族，
+     * 它会以「多了一个留空」的形式在这里失败 —— 那正是要人去裁定的信号。
+     */
+    public function test_race_illustrations_leave_only_declared_gaps_unfilled(): void
+    {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
+        $blank = Race::whereNull('illustration_id')->orderBy('name')->pluck('name')->all();
+
+        $this->assertSame(
+            collect(array_keys(RaceIllustrations::GAPS))->sort()->values()->all(),
+            $blank,
+            '留空的种族与 RaceIllustrations::GAPS 声明的不一致',
+        );
+    }
+
+    /**
+     * 裁定表本身要完全对得上字典：不能有多余的名字，也不能有一条落不下去。
+     */
+    public function test_race_illustration_rulings_all_resolve(): void
+    {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+        $this->requiresSource('docs/splashes.json', '立绘清单，记着 PRTS 的图片地址');
+
+        $stats = RaceIllustrations::associate();
+
+        $this->assertSame([], $stats['problems'], '种族示意有落不下的裁定');
+        $this->assertSame(
+            Race::count() - count(RaceIllustrations::GAPS),
+            $stats['linked'],
+            '落下的种族数与「字典里除声明缺口之外的全部」不符',
+        );
     }
 
     /**
@@ -673,6 +1097,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_operator_roster_is_imported_without_overwriting_curated_people(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+
         $roster = json_decode((string) file_get_contents(base_path('docs/prts-干员一览.json')), true);
 
         $this->assertIsArray($roster);
@@ -719,6 +1145,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_characters_can_belong_to_several_factions(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+
         $shark = Character::where('name', '幽灵鲨')->firstOrFail();
         $names = $shark->factions->pluck('name')->all();
 
@@ -742,6 +1170,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_birth_places_are_resolved_into_place_nodes(): void
     {
+        $this->requiresSource('docs/prts-干员一览.json', 'PRTS 干员名单（wiki 抓取产物）');
+
         $placeNames = Place::pluck('name')->all();
         $withBirthPlace = Character::with('birthPlace')->whereNotNull('birth_place')->get();
 
@@ -925,6 +1355,8 @@ class SeederIntegrityTest extends TestCase
      */
     public function test_talos_roster_is_imported_from_the_endfield_wiki(): void
     {
+        $this->requiresSource('docs/fz-干员一览.json', '终末地 Wiki 干员名单（wiki 抓取产物）');
+
         // 已有条目不被覆盖：管理员的人工简介与归属都还在；
         // 代号是**空字段** —— 由名单的 nameEn 照来源写法补上（只补空，不覆盖既有值）
         $endministrator = Character::where('name', '管理员')->firstOrFail();

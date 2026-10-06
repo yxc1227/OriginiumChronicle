@@ -147,6 +147,8 @@ Artisan::command('citations:verify {--fix : 重算并回写偏移与行号（不
 |      容器里的 GD 不能栅格化 SVG。这两份由同一几何经 headless Chrome 渲染、
 |      再按 ICO 规范封装，属于「改了 Logo.php 才需要重跑」的一次性产物，
 |      步骤记在 docs/LOGO.md §6。
+|   4. 仓库图标（icon.png 与 .idea/icon.png）：上面那张 180 的副本，供 Sourcetree、
+|      JetBrains 这类「列表类工具」显示仓库图标（读哪儿是它们的约定），同样记在 §6。
 |
 | 改几何后跑一次本命令，就能保证 favicon 与页面里的标记不会长得不一样。
 */
@@ -157,7 +159,8 @@ Artisan::command('logo:export', function () {
     file_put_contents($path, $svg . "\n");
 
     $this->info('已导出 public/favicon.svg（' . strlen($svg) . ' 字节）。');
-    $this->line('  光栅版本（favicon.ico / apple-touch-icon.png）需按 docs/LOGO.md §6 重新渲染。');
+    $this->line('  光栅版本（favicon.ico / apple-touch-icon.png）需按 docs/LOGO.md §6 重新渲染；');
+    $this->line('  仓库图标（icon.png / .idea/icon.png）是它的副本，同一节里一并复制。');
 
     return self::SUCCESS;
 })->purpose('从 App\Support\Logo 导出浏览器图标文件');
@@ -182,6 +185,33 @@ Artisan::command('bg:contours', function () {
 
     return self::SUCCESS;
 })->purpose('生成终末地风格等高线全站背景（App\Support\ContourField）');
+
+/*
+|--------------------------------------------------------------------------
+| 干员立绘：导出「库里存在」的泰拉人物名，供采集脚本清理孤儿图
+|--------------------------------------------------------------------------
+|
+| 立绘清单由 bin/fetch-splashes.py 从 PRTS 枚举全部 `立绘_*` 图片生成，
+| 而 PRTS 的名单比本仓库大 —— 未实装的干员（F91、郁金香…）、卫戍协议形态、
+| 建制的无名单位（预备干员-XX）、制作组彩蛋（海猫、小色）…… 这些「库里没有的人」
+| 会以孤儿文件的形式混进仓库。采集脚本用本命令的输出把它们挡在门外。
+|
+| 判定口径与 App\Support\CharacterSplashes::associate() **完全一致**：
+| 按 world()->value + 名字精确匹配，不做模糊推断。这里导出的就是「会被关联上」
+| 的那批名字 —— 多一个少一个，两边的名单都会对不上。
+*/
+Artisan::command('splashes:names', function () {
+    $names = \App\Models\Character::query()->get()
+        ->filter(fn (\App\Models\Character $c) => $c->world()->value === \App\Enums\World::Terra->value)
+        ->pluck('name')
+        ->unique()
+        ->sort()
+        ->values();
+
+    $this->line($names->join("\n"));
+
+    return self::SUCCESS;
+})->purpose('输出泰拉侧全部人物名，供立绘采集脚本过滤「库里不存在」的人物');
 
 /*
 | 巡检频率的选择依据：时间线内容的写入是低频的（日均几十次），

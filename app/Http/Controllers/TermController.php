@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Enums\World;
 use App\Models\Term;
+use App\Support\Search\Keyword;
+use App\Support\Search\Params;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -36,7 +38,7 @@ class TermController extends Controller
         // 手改 URL 得到的是完整列表，而不是一张谁也不明白为什么空着的列表
         $categoryRaw = $request->string('category')->value();
         $category = array_key_exists($categoryRaw, Term::CATEGORIES) ? $categoryRaw : null;
-        $keyword = trim((string) $request->string('q')->value());
+        $keyword = Params::text($request, 'q');
 
         $terms = $this->terms($world, $keyword, $category);
 
@@ -58,14 +60,10 @@ class TermController extends Controller
      *
      * @return Collection<string, Collection<int, Term>>
      */
-    private function terms(World $world, string $keyword = '', ?string $category = null): Collection
+    private function terms(World $world, ?string $keyword, ?string $category = null): Collection
     {
-        return Term::visibleIn($world)
+        return Keyword::apply(Term::visibleIn($world), $keyword, ['name', 'origin', 'definition'])
             ->when($category !== null, fn ($query) => $query->where('category', $category))
-            ->when($keyword !== '', fn ($query) => $query->where(fn ($search) => $search
-                ->where('name', 'like', "%{$keyword}%")
-                ->orWhere('origin', 'like', "%{$keyword}%")
-                ->orWhere('definition', 'like', "%{$keyword}%")))
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get()

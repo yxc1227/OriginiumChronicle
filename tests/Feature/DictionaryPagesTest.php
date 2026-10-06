@@ -267,16 +267,31 @@ class DictionaryPagesTest extends TestCase
     {
         $css = (string) file_get_contents(public_path('assets/app.css'));
 
-        // 让位高度只定义一次，各落点统一引用它 —— 否则改了导航栏高度就要满文件找
+        // 让位高度只定义一次：顶栏高度是唯一来源，落点偏移由它推导 ——
+        // 否则改了导航栏高度就得满文件找（有快速导航条的页面还要再叠一条，
+        // 那一条的高度由 JS 量进 --quick-nav-h，同样不该在这里写死）
         $this->assertMatchesRegularExpression(
-            '/--anchor-offset:\s*\d+px/',
+            '/--topbar-h:\s*\d+px/',
             $css,
-            '顶部导航的让位高度没有定义成 --anchor-offset',
+            '顶栏高度没有定义成 --topbar-h',
         );
 
-        foreach (['.card[id]', 'table.tbl td[id]', '.era-band', '.era-period'] as $selector) {
+        $this->assertMatchesRegularExpression(
+            '/--anchor-offset:\s*calc\(\s*var\(--topbar-h\)/',
+            $css,
+            '落点偏移没有从 --topbar-h 推导 —— 顶栏一变高，落点就又被压住了',
+        );
+
+        foreach ([
+            '.card[id]',
+            '.operator-card[id]',
+            'table.tbl td[id]',
+            '.era-band',
+            '.era-period',
+            '.place-tree tbody tr[data-place-row]',
+        ] as $selector) {
             $this->assertMatchesRegularExpression(
-                '/'.preg_quote($selector, '/').'\s*,?[^{]*\{[^}]*scroll-margin-top:\s*var\(--anchor-offset\)/s',
+                '/'.preg_quote($selector, '/').'\s*,?[^{]*\{[^}]*scroll-margin-top:\s*(?:calc\()?var\(--anchor-offset\)/s',
                 $css,
                 "深链落点 {$selector} 没有让开顶部导航，条目标题会被导航栏盖住",
             );
@@ -583,5 +598,40 @@ class DictionaryPagesTest extends TestCase
         $this->get(route('operators.index'))
             ->assertOk()
             ->assertSee(route('races.index').'#race-'.$race->slug);
+    }
+
+    /**
+     * 种族卡上的示意图版必须**指名是谁的立绘**，而且点得进去。
+     *
+     * 这一块是替图（书里那张种族插图不在本仓库手上，见 App\Support\RaceIllustrations）：
+     * 「图」与「谁」缺一不可 —— 只显示一张图，读者就会把它当成书里那张官方插图；
+     * 只写名字不给出口，读者想问「凭什么是他」也无处可问。
+     */
+    public function test_race_card_names_the_operator_standing_in_for_it(): void
+    {
+        $race = $this->race('菲林', null);
+
+        $character = Character::create([
+            'name' => '测试示意干员',
+            'slug' => 'chr-fixture-specimen',
+            'kind' => 'operator',
+            'race_id' => $race->id,
+            'splashes' => [
+                '1' => 'assets/splashes/terra/fixture_1.avif',
+                '2' => 'assets/splashes/terra/fixture_2.avif',
+            ],
+            'sort_order' => 0,
+        ]);
+
+        $race->update(['illustration_id' => $character->id]);
+
+        $this->get(route('races.index'))
+            ->assertOk()
+            ->assertSee(route('operators.show', $character), false)
+            ->assertSee('race-art__stage', false)
+            // 取精英二那张，并把版本写出来 —— 读者要知道这不是随机挑的一张
+            ->assertSee('assets/splashes/terra/fixture_2.avif')
+            ->assertDontSee('assets/splashes/terra/fixture_1.avif')
+            ->assertSee('精英2');
     }
 }

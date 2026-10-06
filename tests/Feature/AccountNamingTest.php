@@ -268,15 +268,32 @@ class AccountNamingTest extends TestCase
         $this->assertContains('name', User::SORTABLE);
     }
 
-    public function test_search_accepts_wildcards_but_does_not_treat_them_as_such(): void
+    /**
+     * 通配符按**字面字符**处理：`_` 搜的是下划线本身，`%` 搜的是百分号本身。
+     *
+     * 这句话有正反两面，缺一不可：搜 `_` 不能把所有账号都带出来（那是通配符语义），
+     * 也不能一个都搜不出来（那是转义过头）。从前只断言了前半句，于是后半句的 bug
+     * —— 转义符 `\` 在 SQLite 上没有 `escape` 子句就不成立、字面下划线根本搜不到 ——
+     * 一直躺在测试盲区里（2026-09-27 统一检索层时修掉，见 App\Support\Search\Keyword）。
+     */
+    public function test_search_treats_wildcards_as_literal_characters(): void
     {
         $admin = $this->admin('root@example.test');
         $this->user(UserRole::Editor, 'wildcard_nick@example.test', '下划线昵称');
+        $this->user(UserRole::Editor, 'plain@example.test', '无下划线昵称');
 
-        // `_` 是 LIKE 的单字符通配符，必须被转义，否则搜一个 _ 会命中所有人
+        // 搜 `_`：命中有字面下划线的那个，且**只**命中它
         $this->actingAs($admin)
             ->get(route('admin.users.index', ['q' => '_']))
             ->assertOk()
-            ->assertDontSee('wildcard_nick@example.test');
+            ->assertSee('wildcard_nick@example.test')
+            ->assertDontSee('plain@example.test');
+
+        // 搜 `%`：库里没有谁的登录名带百分号 —— 它既不该命中全部，也不该报错
+        $this->actingAs($admin)
+            ->get(route('admin.users.index', ['q' => '%']))
+            ->assertOk()
+            ->assertDontSee('wildcard_nick@example.test')
+            ->assertDontSee('plain@example.test');
     }
 }

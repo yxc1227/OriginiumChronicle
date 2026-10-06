@@ -26,3 +26,7 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /.codebuddy
+
+# 《大地巡旅》原文（版权归鹰角网络所有）：只作**内容考据时的数据参照**，刻意不入库。
+# 它不随仓库分发：缺了它 seed 照常跑完（语料与引文留空，相关断言明确跳过）。
+/docs/TERRA A JOURNEY.txt

@@ -104,6 +104,8 @@
 | `public/favicon.svg` | 浏览器标签图标（矢量） | `php artisan logo:export` |
 | `public/favicon.ico` | 旧浏览器兜底（内含 16/32/48 三个原生尺寸） | 一次性产物，见下 |
 | `public/apple-touch-icon.png` | iOS 主屏（180×180） | 一次性产物，见下 |
+| `icon.png`（仓库根） | **Sourcetree** 的本地仓库图标 | 上面那张的副本，见下 |
+| `.idea/icon.png` | **JetBrains** 系列「最近项目」列表的图标 | 同上 |
 | `docs/logo-preview.html` | 评审页（锁排 / 尺寸 / 变体 / 净空） | 由 `Logo.php` 渲染，见下 |
 
 改了几何之后：
@@ -112,22 +114,37 @@
 php artisan logo:export        # 重新导出 favicon.svg（容器内即 docker exec -w /Arknight php_8.4.8 php artisan logo:export）
 ```
 
-`favicon.ico` 与 `apple-touch-icon.png` 是**光栅图**，容器里的 GD 不能栅格化 SVG，
-因此它们由同一份几何经 headless Chrome 逐尺寸原生渲染、再按 ICO 规范封装：
+`favicon.ico`、`apple-touch-icon.png` 与两份仓库图标都是**光栅图**，容器里的 GD
+不能栅格化 SVG，因此由同一份几何逐尺寸原生渲染、再按 ICO 规范封装。
+
+**渲染用 macOS 的 QuickLook（`qlmanage`），不要用 headless Chrome。** 后者在开发机上
+渲出来是坏的：一张**白底加一条黄边**（`apple-touch-icon.png` 的旧版正是这条配方留下的，
+2026-09-30 才发现；换成 HTML 包裹同样坏，可稳定复现）。QuickLook 渲染正确，代价是留
+一层**不透明白底** —— 标记只有黄与墨两色，白只可能是背景，键掉即可
+（`.codebuddy/raster-logo.py` 的 `key_out_white`）。
 
 ```bash
-# 1) 取几何（width/height 换成 100% 以便按窗口尺寸渲染）
-docker exec php_8.4.8 php -r 'require "/Arknight/vendor/autoload.php"; echo App\Support\Logo::faviconSvg();' \
-  | grep -o '<svg[^>]*>.*</svg>' | sed 's/width="32" height="32"/width="100%" height="100%"/' > /tmp/logo.svg
+# 1) 取几何（width/height 换成 100%）
+sed 's/width="32" height="32"/width="100%" height="100%"/' public/favicon.svg > /tmp/logo.svg
 
-# 2) 逐尺寸原生渲染（16/32/48 供 .ico，180 供 apple-touch-icon）
+# 2) 逐尺寸原生渲染（16/32/48 供 .ico，180 供 apple-touch-icon 与仓库图标）
 for s in 16 32 48 180; do
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
-    --hide-scrollbars --force-device-scale-factor=1 --screenshot=/tmp/logo-$s.png \
-    --window-size=$s,$s "file:///tmp/logo.svg"
+  qlmanage -t -s $s -o /tmp /tmp/logo.svg && mv /tmp/logo.svg.png /tmp/logo-$s.png
 done
+
+# 3) 产出下游文件：键白底 → 透明、封装 favicon.ico、复制两份仓库图标
+#    该脚本与 bin/ 下的那些一样属**工作区脚本**，不入库
+python3 .codebuddy/raster-logo.py
 ```
 
-再把 16/32/48 三张 PNG 按 ICO 规范封装成 `public/favicon.ico`（PNG 负载，三个原生尺寸，不做二次缩放）、
-把 180 存为 `public/apple-touch-icon.png`。这一步只在几何真的改了才需要重跑 ——
+上面第 3 步一次产出四个文件：`public/favicon.ico`（PNG 负载、16/32/48 三个原生尺寸，
+不做二次缩放）、`public/apple-touch-icon.png`（180），以及它的两份副本 ——
+`icon.png`（仓库根，**Sourcetree** 读）与 `.idea/icon.png`（**JetBrains** 读）：
+读哪儿是那两个工具的约定，不是我们的发明。这一步只在几何真的改了才需要重跑 ——
 标记是稳定的资产，不是日常迭代对象。
+
+`.idea/` 的其余内容照旧不入库，只有这一个文件由 `.gitignore` 的负向规则放行
+（负向规则要求父目录本身不被忽略，所以那条写的是 `/.idea/*` 而不是 `/.idea`）。
+
+`tests/Feature/LogoAssetsTest.php` 断言这两份与 `apple-touch-icon.png` **字节相同** ——
+几何改了、仓库图标忘了跟着换，就是那张网兜住的事。

@@ -7,16 +7,21 @@
 **《明日方舟》系列的统一事件时间表**：把散落在主线、活动与设定集里的事件抽出来，
 按各自的游戏内纪年（泰拉历 / 塔罗斯历）排序，并让每一条时间都带着它的可靠程度。
 
+<img alt="version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-ffd400">
 <img alt="PHP 8.3+" src="https://img.shields.io/badge/PHP-8.3%2B-777bb4?logo=php&logoColor=white">
 <img alt="Laravel 13" src="https://img.shields.io/badge/Laravel-13-ff2d20?logo=laravel&logoColor=white">
-<img alt="tests 330 passed" src="https://img.shields.io/badge/tests-330%20passed-3fb950">
+<img alt="tests 352 passed" src="https://img.shields.io/badge/tests-352%20passed-3fb950">
 <img alt="frontend zero-build" src="https://img.shields.io/badge/frontend-zero--build-ffd400">
 <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-blue">
 
+<sub>版本与每次发行的改动见 [CHANGELOG.md](CHANGELOG.md)。同一个号在站点上有两处可见（顶栏右上角、页脚），
+也贴在静态资源的 URL 上（`?v=`，用来破缓存）；徽章、配置文件、更新记录三处的数字由 `AppVersionTest` 盯着，不会漂移。</sub>
+
 <!-- 截图维护：1440×1000 视口 @2x（输出 2880×2000），Chrome headless 带
      --force-prefers-reduced-motion 拍摄 —— 站点首屏外内容靠 IntersectionObserver
-     揭示，关掉动效才能一次拍到完整静态画面；改版后按同样参数重拍即可。 -->
-<img src="docs/screenshot.png" alt="时间线首页：世界切换器 + 多维筛选栏 + 纪元分组条目流" width="100%">
+     揭示，关掉动效才能一次拍到完整静态画面；改版后按同样参数重拍即可。
+     注意右上角会带上**当版版本号**：bump 版本号之后，这张图要和徽章一起重拍/更新。 -->
+<img src="docs/screenshot.png" alt="时间线首页：世界切换器 + 多维筛选栏 + 单主轴的纪元分段年表（分段可折叠、带快速导航）" width="100%">
 
 </div>
 
@@ -100,6 +105,7 @@ docker exec -w /app <容器名> php artisan migrate:fresh --seed
 | `TIMELINE_AI_DRIVER` | `heuristic` | AI 梳理驱动。`heuristic` 是零依赖规则抽取；改 `openai-compatible` 才真正调用模型 |
 | `TIMELINE_AI_ENDPOINT` / `TIMELINE_AI_KEY` / `TIMELINE_AI_MODEL` | OpenAI 端点 / 空 / `gpt-4o-mini` | 仅 `openai-compatible` 使用；**没有 Key 时静默降级回 `heuristic`**，不会让站点挂掉 |
 | `TIMELINE_PER_PAGE` / `TIMELINE_LEASE_SECONDS` / `TIMELINE_REVISION_KEEP` | 见 `config/timeline.php` | 每页条数 / 编辑租约时长 / 版本快照保留数 |
+| `TIMELINE_DUPLICATE_SIMILARITY` / `TIMELINE_OVERLOADED_DAY` / `TIMELINE_SOURCE_YEAR_TOLERANCE` | 见 `config/timeline.php` | 一致性巡检的判定松紧（不是功能开关） |
 | `IDENTITY_REGISTRATION` | `true` | 是否开放自助注册 |
 | `IDENTITY_AVATAR_MAX_KB` / `IDENTITY_AVATAR_SIZE` | `2048` / `256` | 头像上传上限与输出边长 |
 | `HYPERGRYPH_CLIENT_ID` / `HYPERGRYPH_CLIENT_SECRET` / `HYPERGRYPH_AUTHORIZE_URL` / `HYPERGRYPH_TOKEN_URL` / `HYPERGRYPH_USERINFO_URL` | 空 | 鹰角通行证渠道；**五项全空时显示「未启用」**，不影响其他功能 |
@@ -136,7 +142,7 @@ docker exec -w /app <容器名> php artisan migrate:fresh --seed
 php artisan migrate:fresh --seed      # 重建数据库 + 灌入起始语料
                                       # 种子对条目是「已存在就整批跳过」：改了种子内容要用 fresh，
                                       # 单跑 db:seed 只会刷新字典
-php artisan test                      # 全量测试（330 项 / 2893 断言）
+php artisan test                      # 全量测试（352 项 / 3035 断言；另有 13 项因本地来源缺失而跳过）
 ./vendor/bin/pint                     # 代码风格（Laravel 官方风格）
 
 php artisan timeline:scan             # 全量一致性体检 → 异常收件箱
@@ -152,12 +158,12 @@ php artisan timeline:purge-locks      # 回收过期编辑租约（定时任务�
 
 | 路径 | 作用 |
 | --- | --- |
-| `/` | 时间线：世界切换器 + 多维筛选 + 纪元分组条目流 + 条目抽屉（查看 / 编辑 / 标注 / 版本）。`?world=talos` 进塔卫二年表 |
+| `/` | 时间线：世界切换器 + 多维筛选 + **一条主轴**贯穿的纪元分段年表（每段可折叠，顶部粘一条快速导航）+ 条目抽屉（查看 / 编辑 / 标注 / 版本）。`?world=talos` 进塔卫二年表 |
 | `/sources`、`/sources/{slug}` | 出处与语料库：录入剧情原文（AI 抽取与引用定位的地基）、编辑原文、触发梳理 |
 | `/proposals` | AI 审核台：逐条核验引文，采纳 / 合并 / 驳回 |
 | `/anomalies` | 一致性收件箱：处理巡检异常，可全量体检 |
 | `/operators`、`/operators/{slug}` | 人员列表（分干员 / 历史人物 / 剧情人物三档）与详情页 |
-| `/places` `/organizations` `/races` `/terms` | 词典四页：地名（成树，可记别名）、组织（按类型分组）、种族、词条（按世界分列） |
+| `/places` `/organizations` `/races` `/terms` | 词典四页：地名（成树、可记别名，带顶层节点快速导航）、组织（按类型分组）、种族、词条（按世界分列） |
 | `/admin/users` | 账号管理（仅管理员）：搜索/排序表格、批量操作、重置密码、外部身份核验、操作日志 |
 | `/settings/profile` | 个人设置：头像、昵称、密码、外部渠道绑定与解绑 |
 | `/login` `/register` `/register/external` | 登录、自助注册、外部渠道注册补全 |
@@ -273,7 +279,7 @@ reviewer 锁定后 editor 完全不可写、出处归属（`source_user`）限�
 | 《大地巡旅》散文卷（世界 / 国家与地区 / 组织） | 32 条 | **年份普遍未载** → `unknown`，进「时间未定」泳道，`needs_review` |
 | 《大地巡旅》附录「泰拉纪年」 | 31 条 | 书里唯一的成体系年表（797–1099），`confirmed` 且附逐字引文 |
 | 塔卫二年表 | 10 条 | 全部来自**社区考据整理**，非官方原文：可信度只到 `inferred` / `disputed`，**不附引文** |
-| 字典（同书派生） | 36 种族 · 47 地名 · 20 词条 · 69 阵营（政体 22 / 地域 1 / 组织 46） | 供人物、条目与检索挂载；四个大类各自成页 |
+| 字典（同书派生） | 36 种族 · 164 地名 · 134 词条 · 147 阵营（政体 26 / 地域 1 / 组织 120） | 供人物、条目与检索挂载；四个大类各自成页 |
 | 人员名单（快照） | 泰拉 463（443 干员 + 18 历史 + 2 剧情）· 塔卫二 33 | 来自 `docs/prts-干员一览.json` 与 `docs/fz-干员一览.json`，只取名字/代号/种族/势力/出身地，**只新增不覆盖** |
 | 账号 | 5 个演示账号 · 2 条外部身份绑定 | 见上文「演示账号」 |
 
@@ -314,7 +320,8 @@ reviewer 锁定后 editor 完全不可写、出处归属（`source_user`）限�
 ## 测试
 
 ```bash
-php artisan test                      # 330 项 / 2893 断言
+php artisan test                      # 352 项 / 3035 断言（13 项跳过：语料、两份 wiki 名单、
+                                      # 头像与立绘清单都不随仓库分发，相关断言会明确跳过而非失败）
 ```
 
 <details>

@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\AnomalyType;
 use App\Enums\DateConfidence;
 use App\Enums\DatePrecision;
 use App\Enums\EventStatus;
 use App\Enums\World;
+use App\Support\Search\Keyword;
 use App\Support\TerraDate;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -14,7 +16,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Str;
 
 /**
  * 时间线事件条目。
@@ -207,18 +208,13 @@ class Event extends Model
          */
         $world = World::fromRequest($filters['world'] ?? null);
 
-        return $query
-            ->where('world', $world->value)
-            ->when(filled($filters['q'] ?? null), function (Builder $q) use ($filters) {
-                $term = '%'.Str::lower(trim((string) $filters['q'])).'%';
-                $q->where(function (Builder $inner) use ($term) {
-                    $inner->whereRaw('lower(title) like ?', [$term])
-                        ->orWhereRaw('lower(summary) like ?', [$term])
-                        ->orWhereRaw('lower(coalesce(details, \'\')) like ?', [$term])
-                        ->orWhereRaw('lower(coalesce(location, \'\')) like ?', [$term])
-                        ->orWhereRaw('lower(date_display) like ?', [$term]);
-                });
-            })
+        return Keyword::apply(
+            // 关键词：标题 / 摘要 / 详述 / 地点 / 纪年原文 —— 列与从前一致，
+            // 空值、大小写、通配符的规矩改由全站统一的那套出（见 Keyword）
+            $query->where('world', $world->value),
+            $filters['q'] ?? null,
+            ['title', 'summary', 'details', 'location', 'date_display'],
+        )
             ->when(filled($filters['era_id'] ?? null), fn (Builder $q) => $q->where('era_id', $filters['era_id']))
             ->when(filled($filters['status'] ?? null), fn (Builder $q) => $q->where('status', $filters['status']))
             ->when(filled($filters['confidence'] ?? null), fn (Builder $q) => $q->where('date_confidence', $filters['confidence']))
@@ -286,7 +282,7 @@ class Event extends Model
     public function hasBlockingAnomalies(): bool
     {
         return $this->openAnomalies()
-            ->whereIn('type', collect(\App\Enums\AnomalyType::cases())
+            ->whereIn('type', collect(AnomalyType::cases())
                 ->filter(fn ($t) => $t->isBlocking())
                 ->map(fn ($t) => $t->value)
                 ->all())

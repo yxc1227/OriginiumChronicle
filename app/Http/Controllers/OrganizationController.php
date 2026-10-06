@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Enums\FactionKind;
 use App\Enums\World;
 use App\Models\Faction;
+use App\Support\Search\Keyword;
+use App\Support\Search\Params;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -37,7 +39,7 @@ class OrganizationController extends Controller
             $kind = null;
         }
 
-        $keyword = trim((string) $request->string('q')->value());
+        $keyword = Params::text($request, 'q');
 
         $organizations = $this->organizations($world, $keyword, $kind);
 
@@ -58,15 +60,14 @@ class OrganizationController extends Controller
      *
      * @return Collection<int, Faction>
      */
-    private function organizations(World $world, string $keyword = '', ?FactionKind $kind = null): Collection
+    private function organizations(World $world, ?string $keyword, ?FactionKind $kind = null): Collection
     {
-        return Faction::query()
-            ->organizations()
+        return Keyword::apply(
+            Faction::query()->organizations(),
+            $keyword,
+            ['name', 'full_name', 'description'],
+        )
             ->when($kind !== null, fn ($query) => $query->where('kind', $kind->value))
-            ->when($keyword !== '', fn ($query) => $query->where(fn ($search) => $search
-                ->where('name', 'like', "%{$keyword}%")
-                ->orWhere('full_name', 'like', "%{$keyword}%")
-                ->orWhere('description', 'like', "%{$keyword}%")))
             // children 供「下属 …」显示；
             // parent 的计数同样要预载 —— 归属推导要沿上级链走，
             // 上级身上没有计数就会各自回查一次，而「内部部门」正好都要走这一步
